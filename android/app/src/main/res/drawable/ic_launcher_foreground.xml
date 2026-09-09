@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    MoneyFlow launcher foreground. A stylised savings arrow + coin glyph in
+    the brand green, sized to the Android 8.0+ adaptive-icon safe zone
+    (66dp of the inner 72dp viewport). The 18dp gutter on each side stops
+    the icon being clipped when masked to a circle / squircle / teardrop.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Inner safe-zone group (66dp centred inside 108dp viewport) -->
+    <group
+        android:scaleX="0.61"
+        android:scaleY="0.61"
+        android:translateX="21"
+        android:translateY="21">
+
+        <!-- Outer coin ring -->
+        <path
+            android:fillColor="@color/moneyflow_primary"
+            android:pathData="M54,4 A50,50 0 1 1 54,104 A50,50 0 1 1 54,4 Z M54,16 A38,38 0 1 0 54,92 A38,38 0 1 0 54,16 Z" />
+
+        <!-- Upward arrow body -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M54,30 L72,52 L62,52 L62,72 L46,72 L46,52 L36,52 Z" />
+
+        <!-- Coin slot mark -->
+        <path
+            android:fillColor="@color/moneyflow_primary"
+            android:pathData="M28,56 L80,56 L80,62 L28,62 Z" />
+    </group>
+</vector>
