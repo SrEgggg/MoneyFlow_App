@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../core/constants/categories.dart';
 import '../../../core/utils/date_utils.dart';
-import '../../../core/utils/financial_day.dart';
+
 import '../../../core/utils/money.dart';
 import '../../../data/models/enums.dart';
 import '../../../data/models/models.dart';
@@ -66,15 +66,16 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
   void _setType(TxType t) {
     setState(() {
       _type = t;
-      _categoryId = (t == TxType.income ? Categories.income : Categories.expense)
-          .first
-          .id;
+      _categoryId =
+          (t == TxType.income ? Categories.income : Categories.expense)
+              .first
+              .id;
     });
   }
 
   Future<void> _save() async {
     final amount = double.tryParse(_amountCtrl.text.trim());
-    if (amount == null || amount <= 0) {
+    if (amount == null || !amount.isFinite || amount <= 0) {
       _showError('Enter a valid amount');
       return;
     }
@@ -103,7 +104,6 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
     try {
       await ref.read(transactionsProvider.notifier).add(tx);
       // Trigger recalc
-      await ref.read(recalcServiceProvider).recomputeFrom(FinancialDay.key(_date));
       if (!mounted) return;
       // Reset for next entry
       _amountCtrl.clear();
@@ -117,7 +117,8 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '${_type == TxType.income ? 'Income' : 'Expense'} saved: ${Money.compact(amount)}'),
+            '${_type == TxType.income ? 'Income' : 'Expense'} saved: ${Money.compact(amount)}',
+          ),
           duration: const Duration(seconds: 1),
           backgroundColor: AppColors.surfaceContainerHigh,
         ),
@@ -130,10 +131,7 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: AppColors.error,
-      ),
+      SnackBar(content: Text(msg), backgroundColor: AppColors.error),
     );
   }
 
@@ -160,10 +158,10 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
 
   @override
   Widget build(BuildContext context) {
-    final categories =
-        _type == TxType.income ? Categories.income : Categories.expense;
-    if (_categoryId != null &&
-        !categories.any((c) => c.id == _categoryId)) {
+    final categories = _type == TxType.income
+        ? Categories.income
+        : Categories.expense;
+    if (_categoryId != null && !categories.any((c) => c.id == _categoryId)) {
       _categoryId = categories.first.id;
     }
 
@@ -171,10 +169,7 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
         // Type toggle
-        _TypeToggle(
-          value: _type,
-          onChanged: _setType,
-        ),
+        _TypeToggle(value: _type, onChanged: _setType),
         const SizedBox(height: 16),
 
         // Amount
@@ -208,8 +203,10 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
                 ),
               ),
             ),
-            prefixIconConstraints:
-                const BoxConstraints(minWidth: 0, minHeight: 0),
+            prefixIconConstraints: const BoxConstraints(
+              minWidth: 0,
+              minHeight: 0,
+            ),
           ),
         ),
         const SizedBox(height: 20),
@@ -241,16 +238,18 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
           onTap: _pickDate,
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             decoration: BoxDecoration(
               color: AppColors.surfaceContainerHigh,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                const Icon(Icons.calendar_today,
-                    size: 18, color: AppColors.onSurfaceVariant),
+                const Icon(
+                  Icons.calendar_today,
+                  size: 18,
+                  color: AppColors.onSurfaceVariant,
+                ),
                 const SizedBox(width: 12),
                 Text(
                   D.fullDate(_date),
@@ -260,8 +259,10 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
                   ),
                 ),
                 const Spacer(),
-                const Icon(Icons.chevron_right,
-                    color: AppColors.onSurfaceVariant),
+                const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.onSurfaceVariant,
+                ),
               ],
             ),
           ),
@@ -295,9 +296,11 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
                   ),
                 )
               : const Icon(Icons.check, size: 20),
-          label: Text(_saving
-              ? 'Saving…'
-              : 'Save ${_type == TxType.income ? 'Income' : 'Expense'}'),
+          label: Text(
+            _saving
+                ? 'Saving…'
+                : 'Save ${_type == TxType.income ? 'Income' : 'Expense'}',
+          ),
         ),
       ],
     );
@@ -309,14 +312,14 @@ class _Label extends StatelessWidget {
   const _Label({required this.text});
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          color: AppColors.onSurfaceVariant,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      color: AppColors.onSurfaceVariant,
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.4,
+    ),
+  );
 }
 
 class _TypeToggle extends StatelessWidget {
@@ -383,7 +386,11 @@ class _Tab extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: active ? color : AppColors.onSurfaceVariant, size: 18),
+              Icon(
+                icon,
+                color: active ? color : AppColors.onSurfaceVariant,
+                size: 18,
+              ),
               const SizedBox(width: 6),
               Text(
                 label,
@@ -446,7 +453,9 @@ class _CategoryChip extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: active ? cat.color.withValues(alpha: 0.18) : AppColors.surfaceContainerHigh,
+          color: active
+              ? cat.color.withValues(alpha: 0.18)
+              : AppColors.surfaceContainerHigh,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: active ? cat.color : Colors.transparent,
@@ -456,9 +465,11 @@ class _CategoryChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(cat.icon,
-                color: active ? cat.color : AppColors.onSurfaceVariant,
-                size: 16),
+            Icon(
+              cat.icon,
+              color: active ? cat.color : AppColors.onSurfaceVariant,
+              size: 16,
+            ),
             const SizedBox(width: 6),
             Text(
               cat.name,

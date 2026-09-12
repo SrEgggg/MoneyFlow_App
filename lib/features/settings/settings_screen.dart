@@ -70,7 +70,11 @@ class _ProfileSection extends ConsumerWidget {
                 color: AppColors.primary.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.person, color: AppColors.primary, size: 22),
+              child: const Icon(
+                Icons.person,
+                color: AppColors.primary,
+                size: 22,
+              ),
             ),
             title: Text(
               settings.displayName,
@@ -84,8 +88,11 @@ class _ProfileSection extends ConsumerWidget {
               'Display name',
               style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 12),
             ),
-            trailing: const Icon(Icons.edit_outlined,
-                color: AppColors.onSurfaceVariant, size: 18),
+            trailing: const Icon(
+              Icons.edit_outlined,
+              color: AppColors.onSurfaceVariant,
+              size: 18,
+            ),
             onTap: () => _editName(context, ref),
           ),
         ],
@@ -97,7 +104,7 @@ class _ProfileSection extends ConsumerWidget {
     final ctrl = TextEditingController(text: settings.displayName);
     final result = await showDialog<String>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceContainer,
         title: const Text('Display name'),
         content: TextField(
@@ -117,7 +124,12 @@ class _ProfileSection extends ConsumerWidget {
         ],
       ),
     );
-    if (result != null && result.isNotEmpty) {
+    if (!context.mounted) return;
+    if (result != null && result.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Display name is required')));
+      return;
+    }
+    if (result != null) {
       await ref
           .read(settingsProvider.notifier)
           .save(settings.copyWith(displayName: result));
@@ -137,10 +149,14 @@ class _PreferencesSection extends ConsumerWidget {
         children: [
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.access_time,
-                color: AppColors.onSurfaceVariant),
-            title: const Text('Financial day cutoff',
-                style: TextStyle(color: AppColors.onSurface, fontSize: 14)),
+            leading: const Icon(
+              Icons.access_time,
+              color: AppColors.onSurfaceVariant,
+            ),
+            title: const Text(
+              'Financial day cutoff',
+              style: TextStyle(color: AppColors.onSurface, fontSize: 14),
+            ),
             subtitle: Text(
               '${settings.cutoffHour.toString().padLeft(2, '0')}:00 — transactions before this belong to the previous day',
               style: const TextStyle(
@@ -170,10 +186,14 @@ class _PreferencesSection extends ConsumerWidget {
           const Divider(color: AppColors.surfaceContainerHigh, height: 24),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.attach_money,
-                color: AppColors.onSurfaceVariant),
-            title: const Text('Currency',
-                style: TextStyle(color: AppColors.onSurface, fontSize: 14)),
+            leading: const Icon(
+              Icons.attach_money,
+              color: AppColors.onSurfaceVariant,
+            ),
+            title: const Text(
+              'Currency',
+              style: TextStyle(color: AppColors.onSurface, fontSize: 14),
+            ),
             subtitle: Text(
               settings.currency,
               style: const TextStyle(
@@ -221,8 +241,11 @@ class _PlanningSection extends StatelessWidget {
                 color: AppColors.primary.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.pie_chart_outline_rounded,
-                  color: AppColors.primary, size: 20),
+              child: const Icon(
+                Icons.pie_chart_outline_rounded,
+                color: AppColors.primary,
+                size: 20,
+              ),
             ),
             title: const Text(
               'Budgets',
@@ -236,8 +259,11 @@ class _PlanningSection extends StatelessWidget {
               'Set monthly spending caps per category and watch progress against your actual spend.',
               style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 11),
             ),
-            trailing: const Icon(Icons.chevron_right,
-                color: AppColors.onSurfaceVariant, size: 20),
+            trailing: const Icon(
+              Icons.chevron_right,
+              color: AppColors.onSurfaceVariant,
+              size: 20,
+            ),
             onTap: () => context.push(Routes.budgets),
           ),
           const Divider(color: AppColors.surfaceContainerHigh, height: 24),
@@ -250,8 +276,11 @@ class _PlanningSection extends StatelessWidget {
                 color: const Color(0xFF8B5CF6).withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.autorenew_rounded,
-                  color: Color(0xFF8B5CF6), size: 20),
+              child: const Icon(
+                Icons.autorenew_rounded,
+                color: Color(0xFF8B5CF6),
+                size: 20,
+              ),
             ),
             title: const Text(
               'Recurring transactions',
@@ -265,8 +294,11 @@ class _PlanningSection extends StatelessWidget {
               'Salary, rent, subscriptions — rules that auto-post on a schedule and can be run on demand.',
               style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 11),
             ),
-            trailing: const Icon(Icons.chevron_right,
-                color: AppColors.onSurfaceVariant, size: 20),
+            trailing: const Icon(
+              Icons.chevron_right,
+              color: AppColors.onSurfaceVariant,
+              size: 20,
+            ),
             onTap: () => context.push(Routes.recurring),
           ),
         ],
@@ -364,16 +396,20 @@ class _BackupSection extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceContainer,
-        icon: const Icon(Icons.warning_amber_rounded,
-            color: AppColors.primary, size: 32),
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          color: AppColors.primary,
+          size: 32,
+        ),
         title: const Text('Restore from backup?'),
         content: const Text(
-            'Restoring will REPLACE every row in your database with the '
-            'contents of the most recent backup file in the app documents '
-            'folder. Use this after a fresh install or to roll back to a '
-            'previous export. This cannot be undone.'),
+          'Restoring will REPLACE every row in your database with the '
+          'contents of the most recent backup file in the app documents '
+          'folder. Use this after a fresh install or to roll back to a '
+          'previous export. This cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -397,8 +433,9 @@ class _BackupSection extends ConsumerWidget {
         messenger.showSnackBar(
           const SnackBar(
             content: Text(
-                'No backup file found. Export first, then copy the JSON back '
-                'into the app documents folder before restoring.'),
+              'No backup file found. Export first, then copy the JSON back '
+              'into the app documents folder before restoring.',
+            ),
             duration: Duration(seconds: 5),
           ),
         );
@@ -406,10 +443,10 @@ class _BackupSection extends ConsumerWidget {
       }
 
       final report = await svc.restoreFromFile(reports);
-      final db = await ref.read(databaseProvider.future);
-      await db.close();
-      ref.invalidate(databaseProvider);
-      ref.invalidate(firstRunProvider);
+
+
+      ref.invalidate(dailyCacheForMonthProvider);
+      ref.invalidate(dailyCacheForDayProvider);
       ref.invalidate(settingsProvider);
       ref.invalidate(transactionsProvider);
       ref.invalidate(accountsProvider);
@@ -425,8 +462,9 @@ class _BackupSection extends ConsumerWidget {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-              'Restored ${report.totalRows} rows across '
-              '${report.rowCounts.length} tables.'),
+            'Restored ${report.totalRows} rows across '
+            '${report.rowCounts.length} tables.',
+          ),
           duration: const Duration(seconds: 4),
         ),
       );
@@ -474,8 +512,11 @@ class _DataSection extends ConsumerWidget {
                 color: AppColors.primary.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.restart_alt,
-                  color: AppColors.primary, size: 20),
+              child: const Icon(
+                Icons.restart_alt,
+                color: AppColors.primary,
+                size: 20,
+              ),
             ),
             title: const Text(
               'Reset to demo data',
@@ -501,8 +542,11 @@ class _DataSection extends ConsumerWidget {
                 color: AppColors.error.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.delete_sweep_outlined,
-                  color: AppColors.error, size: 20),
+              child: const Icon(
+                Icons.delete_sweep_outlined,
+                color: AppColors.error,
+                size: 20,
+              ),
             ),
             title: const Text(
               'Clear all data',
@@ -526,16 +570,20 @@ class _DataSection extends ConsumerWidget {
   Future<void> _confirmClear(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceContainer,
-        icon: const Icon(Icons.warning_amber_rounded,
-            color: AppColors.error, size: 32),
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          color: AppColors.error,
+          size: 32,
+        ),
         title: const Text('Clear all data?'),
         content: const Text(
-            'This permanently deletes every account, transaction, goal, '
-            'journal entry, streak, and preference on this device. '
-            'After clearing, the app will look exactly like a brand-new '
-            'install with no data. This cannot be undone.'),
+          'This permanently deletes every account, transaction, goal, '
+          'journal entry, streak, and preference on this device. '
+          'After clearing, the app will look exactly like a brand-new '
+          'install with no data. This cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -557,16 +605,16 @@ class _DataSection extends ConsumerWidget {
     // Wipe every user-data table, then re-run the first-run initializer
     // (which only inserts the default empty settings row).
     final db = await ref.read(databaseProvider.future);
-    await db.wipe();
+    try { await db.wipe();
     await FirstRunInitializer(db).ensureInitialized();
 
     // Close the cached DB handle so providers re-open against the wiped
     // database and observers see a fresh, empty state.
-    await db.close();
 
     // Force every cached provider to rebuild from the empty DB.
-    ref.invalidate(databaseProvider);
-    ref.invalidate(firstRunProvider);
+
+    ref.invalidate(dailyCacheForMonthProvider);
+    ref.invalidate(dailyCacheForDayProvider);
     ref.invalidate(settingsProvider);
     ref.invalidate(transactionsProvider);
     ref.invalidate(accountsProvider);
@@ -585,21 +633,22 @@ class _DataSection extends ConsumerWidget {
         duration: Duration(seconds: 3),
       ),
     );
+    } catch (e) { if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('Clear failed: $e'))); }
   }
 
   Future<void> _confirmReseed(BuildContext context, WidgetRef ref) async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (context) => AlertDialog(
         backgroundColor: AppColors.surfaceContainer,
-        icon: const Icon(Icons.restart_alt,
-            color: AppColors.primary, size: 32),
+        icon: const Icon(Icons.restart_alt, color: AppColors.primary, size: 32),
         title: const Text('Reset to demo data?'),
         content: const Text(
-            'This wipes everything on this device and replaces it with the '
-            'bundled demo (Kyle, 3 accounts, 3 goals, 30 days of activity). '
-            'Use this for previews or after a real-data test. Your current '
-            'data will be lost unless you exported a backup first.'),
+          'This wipes everything on this device and replaces it with the '
+          'bundled demo (Kyle, 3 accounts, 3 goals, 30 days of activity). '
+          'Use this for previews or after a real-data test. Your current '
+          'data will be lost unless you exported a backup first.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -617,11 +666,10 @@ class _DataSection extends ConsumerWidget {
 
     final messenger = ScaffoldMessenger.of(context);
     final db = await ref.read(databaseProvider.future);
-    await SeedRunner(db).reseed();
-    await db.close();
+    try { await SeedRunner(db).reseed();
 
-    ref.invalidate(databaseProvider);
-    ref.invalidate(firstRunProvider);
+    ref.invalidate(dailyCacheForMonthProvider);
+    ref.invalidate(dailyCacheForDayProvider);
     ref.invalidate(settingsProvider);
     ref.invalidate(transactionsProvider);
     ref.invalidate(accountsProvider);
@@ -640,6 +688,7 @@ class _DataSection extends ConsumerWidget {
         duration: Duration(seconds: 3),
       ),
     );
+    } catch (e) { if (context.mounted) messenger.showSnackBar(SnackBar(content: Text('Reset failed: $e'))); }
   }
 }
 

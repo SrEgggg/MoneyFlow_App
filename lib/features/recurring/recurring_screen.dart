@@ -89,6 +89,14 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
     try {
       final count =
           await ref.read(recurringRunnerProvider).materializeDue();
+      await ref.read(recalcServiceProvider).recomputeAll(cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour);
+      ref.invalidate(transactionsProvider);
+      ref.invalidate(accountsProvider);
+      ref.invalidate(recurringProvider);
+      ref.invalidate(streaksProvider);
+      ref.invalidate(earnedAchievementsProvider);
+      ref.invalidate(dailyCacheForMonthProvider);
+      ref.invalidate(dailyCacheForDayProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

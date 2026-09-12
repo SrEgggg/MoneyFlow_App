@@ -85,8 +85,10 @@ class AccountsScreen extends ConsumerWidget {
           // Drop empty groups.
           groups.removeWhere((_, v) => v.isEmpty);
 
-          final totalBalance =
-              accounts.fold<double>(0, (acc, a) => acc + a.balance);
+          final totalBalance = accounts.fold<double>(
+            0,
+            (acc, a) => acc + a.balance,
+          );
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
@@ -96,16 +98,14 @@ class AccountsScreen extends ConsumerWidget {
               for (final entry in groups.entries) ...[
                 SectionCard(
                   title: entry.key.label,
-                  subtitle: '${entry.value.length} '
+                  subtitle:
+                      '${entry.value.length} '
                       '${entry.value.length == 1 ? 'account' : 'accounts'}',
                   trailing: IconButton(
                     icon: const Icon(Icons.add, size: 18),
                     color: AppColors.primary,
-                    onPressed: () => _openAccountDialog(
-                      context,
-                      ref,
-                      presetType: entry.key,
-                    ),
+                    onPressed: () =>
+                        _openAccountDialog(context, ref, presetType: entry.key),
                   ),
                   child: Column(
                     children: [
@@ -229,13 +229,12 @@ Future<void> _openAccountDialog(
 }) async {
   final result = await showDialog<_AccountDialogResult>(
     context: context,
-    builder: (_) => _AccountDialog(
-      existing: existing,
-      presetType: presetType,
-    ),
+    builder: (_) => _AccountDialog(existing: existing, presetType: presetType),
   );
   if (result == null) return;
 
+  if (!context.mounted) return;
+  try {
   final notifier = ref.read(accountsProvider.notifier);
   if (result is _AccountUpsert) {
     if (existing == null) {
@@ -248,6 +247,9 @@ Future<void> _openAccountDialog(
   }
   // Recompute the home summary so streaks and insights stay in sync.
   ref.invalidate(homeSummaryProvider);
+  } catch (e) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save account: $e')));
+  }
 }
 
 /// Add/edit dialog. Pure UI — returns an [_AccountDialogResult] the caller
@@ -284,7 +286,8 @@ class _AccountDialogState extends State<_AccountDialog> {
     final e = widget.existing;
     _nameCtrl = TextEditingController(text: e?.name ?? '');
     _balanceCtrl = TextEditingController(
-        text: e != null ? e.balance.toStringAsFixed(0) : '');
+      text: e != null && e.balance != 0 ? e.balance.toStringAsFixed(2) : '',
+    );
     _type = e != null
         ? AccountType.fromId(e.type)
         : (widget.presetType ?? AccountType.cash);
@@ -312,12 +315,19 @@ class _AccountDialogState extends State<_AccountDialog> {
   void _save() {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Account name is required')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Account name is required')));
       return;
     }
-    final balance = Money.parse(_balanceCtrl.text);
+    final raw = _balanceCtrl.text.replaceAll(',', '').trim();
+    final balance = raw.isEmpty ? 0.0 : double.tryParse(raw);
+    if (balance == null || !balance.isFinite) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Enter a valid balance')));
+      return;
+    }
     final record = AccountRecord(
       id: widget.existing?.id,
       name: name,
@@ -372,8 +382,9 @@ class _AccountDialogState extends State<_AccountDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _balanceCtrl,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
                 labelText: 'Current balance',
                 hintText: '0',
@@ -428,10 +439,7 @@ class _AccountDialogState extends State<_AccountDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _save,
-          child: Text(isEdit ? 'Save' : 'Add'),
-        ),
+        FilledButton(onPressed: _save, child: Text(isEdit ? 'Save' : 'Add')),
       ],
     );
   }
@@ -442,9 +450,11 @@ class _AccountDialogState extends State<_AccountDialog> {
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surfaceContainer,
         title: const Text('Delete account?'),
-        content: Text('"${widget.existing!.name}" will be removed. '
-            'Existing transactions that reference it will keep the name '
-            'as plain text.'),
+        content: Text(
+          '"${widget.existing!.name}" will be removed. '
+          'Existing transactions that reference it will keep the name '
+          'as plain text.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),

@@ -33,7 +33,7 @@ class FirstRunInitializer {
     await database.insert(
       'settings',
       defaultSettings.toRow(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
+      conflictAlgorithm: ConflictAlgorithm.ignore,
     );
 
     // Seed the static achievement catalog. These are definition rows — not
@@ -41,19 +41,15 @@ class FirstRunInitializer {
     await _seedAchievementDefs(database);
   }
 
-  Future<void> _seedAchievementDefs(Database database) async {
+  Future<void> _seedAchievementDefs(DatabaseExecutor database) async {
     for (final def in AchievementDefs.all) {
-      await database.insert(
-        'achievement_definitions',
-        {
-          'id': def.id,
-          'name': def.name,
-          'description': def.description,
-          'icon_code': def.icon.codePoint,
-          'color_value': def.color.toARGB32(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await database.insert('achievement_definitions', {
+        'id': def.id,
+        'name': def.name,
+        'description': def.description,
+        'icon_code': def.icon.codePoint,
+        'color_value': def.color.toARGB32(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
 }
@@ -75,27 +71,31 @@ class SeedRunner {
   /// "Reset demo data" button in Settings.
   Future<void> reseed() async {
     final database = await db.database;
-    // Order matters: child tables before parents. Daily cache and streaks
-    // have no FKs but are wiped first because they aggregate the others.
-    for (final table in [
-      'daily_performance_cache',
-      'transaction_revisions',
-      'goal_contributions',
-      'transactions',
-      'goals',
-      'accounts',
-      'journal_entries',
-      'user_achievements',
-      'streaks',
-      'settings',
-    ]) {
-      await database.delete(table);
-    }
-    await run();
+    await database.transaction((txn) async {
+      for (final table in [
+        'recurring_transactions',
+        'budgets',
+        'daily_performance_cache',
+        'transaction_revisions',
+        'goal_contributions',
+        'transactions',
+        'goals',
+        'accounts',
+        'journal_entries',
+        'user_achievements',
+        'streaks',
+        'settings',
+      ]) {
+        await txn.delete(table);
+      }
+      await _insertDemo(txn);
+    });
+    await _recomputeDemo();
   }
 
-  Future<void> run() async {
-    final database = await db.database;
+  Future<void> run() => reseed();
+
+  Future<void> _insertDemo(DatabaseExecutor database) async {
     final now = DateTime.now();
 
     // -- Settings --
@@ -228,25 +228,37 @@ class SeedRunner {
       'id': 'saving',
       'current_count': 12,
       'best_count': 18,
-      'last_qualified_day':
-          DateTime(today.year, today.month, today.day).toIso8601String(),
+      'last_qualified_day': DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).toIso8601String(),
     });
     await database.insert('streaks', {
       'id': 'logging',
       'current_count': 30,
       'best_count': 30,
-      'last_qualified_day':
-          DateTime(today.year, today.month, today.day).toIso8601String(),
+      'last_qualified_day': DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).toIso8601String(),
     });
     await database.insert('streaks', {
       'id': 'goal',
       'current_count': 8,
       'best_count': 12,
-      'last_qualified_day':
-          DateTime(today.year, today.month, today.day).toIso8601String(),
+      'last_qualified_day': DateTime(
+        today.year,
+        today.month,
+        today.day,
+      ).toIso8601String(),
     });
+  }
 
-    // -- Compute cache by running recalc across the seeded window --
+  Future<void> _recomputeDemo() async {
+    final now = DateTime.now();
+    // Rebuild derived data after the source data commits.
     final repos = _buildRepos();
     final svc = RecalculationService(
       tx: repos.$1,
@@ -267,28 +279,31 @@ class SeedRunner {
     }
   }
 
-  Future<void> _seedAchievementDefs(Database database) async {
+  Future<void> _seedAchievementDefs(DatabaseExecutor database) async {
     // Persist every code-defined achievement into `achievement_definitions`
     // so the `user_achievements.achievement_id` FK has a valid target.
     // `REPLACE` keeps seeding idempotent across resets.
     for (final def in AchievementDefs.all) {
-      await database.insert(
-        'achievement_definitions',
-        {
-          'id': def.id,
-          'name': def.name,
-          'description': def.description,
-          'icon_code': def.icon.codePoint,
-          'color_value': def.color.toARGB32(),
-        },
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      await database.insert('achievement_definitions', {
+        'id': def.id,
+        'name': def.name,
+        'description': def.description,
+        'icon_code': def.icon.codePoint,
+        'color_value': def.color.toARGB32(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
 
   /// Build repos for the recalc service.
-  (TransactionRepo, CacheRepo, StreakRepo, GoalRepo, AchievementRepo,
-      AccountRepo) _buildRepos() {
+  (
+    TransactionRepo,
+    CacheRepo,
+    StreakRepo,
+    GoalRepo,
+    AchievementRepo,
+    AccountRepo,
+  )
+  _buildRepos() {
     return (
       TransactionRepo(db),
       CacheRepo(db),
@@ -310,56 +325,67 @@ class SeedRunner {
     for (int d = 0; d < 30; d++) {
       if (d == 5 || d == 20) {
         final day = DateTime(now.year, now.month, now.day - d, 9, 0);
-        out.add(TxRecord(
-          amount: 15000,
-          type: TxType.income,
-          category: 'salary',
-          account: 'BPI Savings',
-          occurredAt: day,
-          notes: 'Bi-weekly salary',
-          createdAt: day,
-          updatedAt: day,
-        ));
+        out.add(
+          TxRecord(
+            amount: 15000,
+            type: TxType.income,
+            category: 'salary',
+            account: 'BPI Savings',
+            occurredAt: day,
+            notes: 'Bi-weekly salary',
+            createdAt: day,
+            updatedAt: day,
+          ),
+        );
       }
     }
 
     // Allowance top-up once
-    out.add(TxRecord(
-      amount: 2000,
-      type: TxType.income,
-      category: 'allowance',
-      account: 'GCash',
-      occurredAt: now.subtract(const Duration(days: 14, hours: 6)),
-      notes: 'Monthly allowance',
-      createdAt: now.subtract(const Duration(days: 14)),
-      updatedAt: now.subtract(const Duration(days: 14)),
-    ));
+    out.add(
+      TxRecord(
+        amount: 2000,
+        type: TxType.income,
+        category: 'allowance',
+        account: 'GCash',
+        occurredAt: now.subtract(const Duration(days: 14, hours: 6)),
+        notes: 'Monthly allowance',
+        createdAt: now.subtract(const Duration(days: 14)),
+        updatedAt: now.subtract(const Duration(days: 14)),
+      ),
+    );
 
     // Expense pattern per day. Each day has 0-3 expense entries.
     final expenseRecipes = <_ExpenseRecipe>[
-      _ExpenseRecipe('food_dining',     'Jollibee',      [120, 150, 180, 220, 250, 320], 0.35),
-      _ExpenseRecipe('food_dining',     'McDonald\'s',   [180, 220, 250],              0.18),
-      _ExpenseRecipe('food_dining',     'Starbucks',     [180, 220, 260],              0.20),
-      _ExpenseRecipe('food_dining',     'Lunch',         [120, 150, 180],              0.30),
-      _ExpenseRecipe('transportation',  'Grab',          [120, 150, 180, 220, 250],    0.40),
-      _ExpenseRecipe('transportation',  'Jeepney',       [40, 50, 60],                 0.30),
-      _ExpenseRecipe('transportation',  'Gas',           [400, 500, 600],              0.10),
-      _ExpenseRecipe('groceries',       'Groceries',     [350, 450, 550, 650],         0.18),
-      _ExpenseRecipe('shopping',        'Shopee',        [200, 350, 500, 800],         0.12),
-      _ExpenseRecipe('shopping',        'Uniqlo',        [800, 1200],                  0.05),
-      _ExpenseRecipe('bills',           'Electric bill', [1200, 1500],                 0.05),
-      _ExpenseRecipe('bills',           'Internet',      [1500],                       0.03),
-      _ExpenseRecipe('bills',           'Netflix',       [549],                        0.05),
-      _ExpenseRecipe('entertainment',   'Cinema',        [350, 450],                   0.08),
-      _ExpenseRecipe('subscriptions',   'Spotify',       [129],                        0.05),
-      _ExpenseRecipe('health',          'Pharmacy',      [200, 350],                   0.05),
-      _ExpenseRecipe('education',       'Books',         [350, 600],                   0.04),
-      _ExpenseRecipe('food_dining',     'Dinner',        [200, 350, 500],              0.25),
-      _ExpenseRecipe('food_dining',     'Snacks',        [60, 100, 150],               0.25),
-      _ExpenseRecipe('shopping',        'Lazada',        [250, 450, 750],              0.10),
-      _ExpenseRecipe('transportation',  'Toll fees',     [80, 120],                    0.10),
+      _ExpenseRecipe('food_dining', 'Jollibee', [
+        120,
+        150,
+        180,
+        220,
+        250,
+        320,
+      ], 0.35),
+      _ExpenseRecipe('food_dining', 'McDonald\'s', [180, 220, 250], 0.18),
+      _ExpenseRecipe('food_dining', 'Starbucks', [180, 220, 260], 0.20),
+      _ExpenseRecipe('food_dining', 'Lunch', [120, 150, 180], 0.30),
+      _ExpenseRecipe('transportation', 'Grab', [120, 150, 180, 220, 250], 0.40),
+      _ExpenseRecipe('transportation', 'Jeepney', [40, 50, 60], 0.30),
+      _ExpenseRecipe('transportation', 'Gas', [400, 500, 600], 0.10),
+      _ExpenseRecipe('groceries', 'Groceries', [350, 450, 550, 650], 0.18),
+      _ExpenseRecipe('shopping', 'Shopee', [200, 350, 500, 800], 0.12),
+      _ExpenseRecipe('shopping', 'Uniqlo', [800, 1200], 0.05),
+      _ExpenseRecipe('bills', 'Electric bill', [1200, 1500], 0.05),
+      _ExpenseRecipe('bills', 'Internet', [1500], 0.03),
+      _ExpenseRecipe('bills', 'Netflix', [549], 0.05),
+      _ExpenseRecipe('entertainment', 'Cinema', [350, 450], 0.08),
+      _ExpenseRecipe('subscriptions', 'Spotify', [129], 0.05),
+      _ExpenseRecipe('health', 'Pharmacy', [200, 350], 0.05),
+      _ExpenseRecipe('education', 'Books', [350, 600], 0.04),
+      _ExpenseRecipe('food_dining', 'Dinner', [200, 350, 500], 0.25),
+      _ExpenseRecipe('food_dining', 'Snacks', [60, 100, 150], 0.25),
+      _ExpenseRecipe('shopping', 'Lazada', [250, 450, 750], 0.10),
+      _ExpenseRecipe('transportation', 'Toll fees', [80, 120], 0.10),
       // Heavy overspend day — single big purchase
-      _ExpenseRecipe('shopping',        'Laptop repair', [1500],                       0.01),
+      _ExpenseRecipe('shopping', 'Laptop repair', [1500], 0.01),
     ];
 
     for (int d = 0; d < 30; d++) {
@@ -392,30 +418,52 @@ class SeedRunner {
         final amount = recipe.amounts[rnd.nextInt(recipe.amounts.length)];
         final hour = 7 + rnd.nextInt(15);
         final minute = rnd.nextInt(60);
-        out.add(TxRecord(
-          amount: amount.toDouble(),
-          type: TxType.expense,
-          category: recipe.category,
-          account: _pickAccount(rnd),
-          occurredAt: DateTime(today.year, today.month, today.day, hour, minute),
-          notes: recipe.note,
-          createdAt: DateTime(today.year, today.month, today.day, hour, minute),
-          updatedAt: DateTime(today.year, today.month, today.day, hour, minute),
-        ));
+        out.add(
+          TxRecord(
+            amount: amount.toDouble(),
+            type: TxType.expense,
+            category: recipe.category,
+            account: _pickAccount(rnd),
+            occurredAt: DateTime(
+              today.year,
+              today.month,
+              today.day,
+              hour,
+              minute,
+            ),
+            notes: recipe.note,
+            createdAt: DateTime(
+              today.year,
+              today.month,
+              today.day,
+              hour,
+              minute,
+            ),
+            updatedAt: DateTime(
+              today.year,
+              today.month,
+              today.day,
+              hour,
+              minute,
+            ),
+          ),
+        );
       }
 
       // Force a heavy day: add a 1500-2000 lump on top
       if (heavyDay) {
-        out.add(TxRecord(
-          amount: 1850,
-          type: TxType.expense,
-          category: 'shopping',
-          account: 'BPI Savings',
-          occurredAt: DateTime(today.year, today.month, today.day, 14, 30),
-          notes: 'Laptop repair',
-          createdAt: DateTime(today.year, today.month, today.day, 14, 30),
-          updatedAt: DateTime(today.year, today.month, today.day, 14, 30),
-        ));
+        out.add(
+          TxRecord(
+            amount: 1850,
+            type: TxType.expense,
+            category: 'shopping',
+            account: 'BPI Savings',
+            occurredAt: DateTime(today.year, today.month, today.day, 14, 30),
+            notes: 'Laptop repair',
+            createdAt: DateTime(today.year, today.month, today.day, 14, 30),
+            updatedAt: DateTime(today.year, today.month, today.day, 14, 30),
+          ),
+        );
       }
     }
 

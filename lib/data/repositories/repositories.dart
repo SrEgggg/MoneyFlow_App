@@ -47,7 +47,9 @@ class SettingsNotifier extends AsyncNotifier<SettingsRecord> {
   }
 
   Future<void> save(SettingsRecord r) async {
-    state = const AsyncLoading();
+    if (r.displayName.trim().isEmpty) {
+      throw ArgumentError('Display name is required');
+    }
     final repo = ref.read(settingsRepoProvider);
     await repo.save(r);
     state = AsyncData(r);
@@ -59,8 +61,10 @@ class AccountRepo {
   AccountRepo(this.db);
 
   Future<List<AccountRecord>> all() async {
-    final rows =
-        await (await db.database).query('accounts', orderBy: 'sort_order, id');
+    final rows = await (await db.database).query(
+      'accounts',
+      orderBy: 'sort_order, id',
+    );
     return rows.map(AccountRecord.fromRow).toList();
   }
 
@@ -89,20 +93,30 @@ class AccountRepo {
   }
 
   Future<void> update(AccountRecord r) async {
-    await (await db.database).update(
-      'accounts',
-      r.toRow(),
-      where: 'id = ?',
-      whereArgs: [r.id],
-    );
+    if (r.name.trim().isEmpty || !r.balance.isFinite) throw ArgumentError('Enter a valid account name and balance');
+    await (await db.database).transaction((txn) async {
+      final old = await txn.query('accounts', where: 'id = ?', whereArgs: [r.id]);
+      if (old.isEmpty) throw StateError('Account no longer exists');
+      final duplicates = await txn.query('accounts', where: 'name = ? AND id != ?', whereArgs: [r.name, r.id]);
+      if (duplicates.isNotEmpty) throw StateError('Account names must be unique');
+      await txn.update('transactions', {'account': r.name}, where: 'account = ?', whereArgs: [old.single['name']]);
+      await txn.update('recurring_transactions', {'account': r.name}, where: 'account = ?', whereArgs: [old.single['name']]);
+      await txn.update('accounts', r.toRow(), where: 'id = ?', whereArgs: [r.id]);
+    });
   }
 
   Future<void> delete(int id) async {
-    await (await db.database)
-        .delete('accounts', where: 'id = ?', whereArgs: [id]);
+    await (await db.database).transaction((txn) async {
+      final old = await txn.query('accounts', where: 'id = ?', whereArgs: [id]);
+      if (old.isEmpty) return;
+      for (final table in ['transactions', 'recurring_transactions']) {
+        final linked = await txn.query(table, where: 'account = ?', whereArgs: [old.single['name']], limit: 1);
+        if (linked.isNotEmpty) throw StateError('Move or remove linked transactions and recurring rules before deleting this account');
+      }
+      await txn.delete('accounts', where: 'id = ?', whereArgs: [id]);
+    });
   }
 }
-
 class AccountsNotifier extends AsyncNotifier<List<AccountRecord>> {
   @override
   Future<List<AccountRecord>> build() async {
@@ -124,6 +138,8 @@ class AccountsNotifier extends AsyncNotifier<List<AccountRecord>> {
   Future<void> edit(AccountRecord a) async {
     final repo = ref.read(accountRepoProvider);
     await repo.update(a);
+    ref.invalidate(transactionsProvider);
+    ref.invalidate(recurringProvider);
     await refresh();
   }
 
@@ -138,7 +154,7 @@ class TransactionRepo {
   final AppDatabase db;
   TransactionRepo(this.db);
 
-  Future<List<TxRecord>> all({int limit = 500}) async {
+  Future<List<TxRecord>> all({int? limit}) async {
     final rows = await (await db.database).query(
       'transactions',
       orderBy: 'occurred_at DESC, id DESC',
@@ -148,29 +164,69 @@ class TransactionRepo {
   }
 
   Future<TxRecord?> byId(int id) async {
-    final rows = await (await db.database)
-        .query('transactions', where: 'id = ?', whereArgs: [id]);
+    final rows = await (await db.database).query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
     if (rows.isEmpty) return null;
     return TxRecord.fromRow(rows.first);
   }
 
+  Future<void> _adjustBalance(
+    Transaction txn,
+    TxRecord tx,
+    double direction,
+  ) async {
+    if (!tx.amount.isFinite || tx.amount <= 0) {
+      throw ArgumentError('Enter a finite positive amount');
+    }
+    final delta = tx.amount * (tx.type == TxType.income ? 1 : -1) * direction;
+    final changed = await txn.rawUpdate(
+      'UPDATE accounts SET balance = ROUND(balance + ?, 2) WHERE name = ?',
+      [delta, tx.account],
+    );
+    if (changed != 1) { throw StateError('Choose an existing, uniquely named account'); }
+  }
+
   Future<int> insert(TxRecord tx) async {
-    final row = Map<String, Object?>.from(tx.toRow())..remove('id');
-    return (await db.database).insert('transactions', row);
+    return (await db.database).transaction((txn) async {
+      await _adjustBalance(txn, tx, 1);
+      final row = Map<String, Object?>.from(tx.toRow())..remove('id');
+      return txn.insert('transactions', row);
+    });
   }
 
   Future<void> update(TxRecord tx) async {
-    await (await db.database).update(
-      'transactions',
-      tx.toRow(),
-      where: 'id = ?',
-      whereArgs: [tx.id],
-    );
+    await (await db.database).transaction((txn) async {
+      final rows = await txn.query(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [tx.id],
+      );
+      if (rows.isEmpty) throw StateError('Transaction no longer exists');
+      await _adjustBalance(txn, TxRecord.fromRow(rows.single), -1);
+      await _adjustBalance(txn, tx, 1);
+      await txn.update(
+        'transactions',
+        tx.toRow(),
+        where: 'id = ?',
+        whereArgs: [tx.id],
+      );
+    });
   }
 
   Future<void> delete(int id) async {
-    await (await db.database)
-        .delete('transactions', where: 'id = ?', whereArgs: [id]);
+    await (await db.database).transaction((txn) async {
+      final rows = await txn.query(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      if (rows.isEmpty) return;
+      await _adjustBalance(txn, TxRecord.fromRow(rows.single), -1);
+      await txn.delete('transactions', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   Future<List<TxRecord>> range(DateTime from, DateTime to) async {
@@ -209,6 +265,12 @@ class TransactionsNotifier extends AsyncNotifier<List<TxRecord>> {
   Future<void> add(TxRecord tx) async {
     final repo = ref.read(transactionRepoProvider);
     await repo.insert(tx);
+    await ref
+        .read(recalcServiceProvider)
+        .recomputeAll(
+          cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour,
+        );
+    await ref.read(accountsProvider.notifier).refresh();
     await refresh();
     ref.invalidate(dailyCacheForMonthProvider);
     ref.invalidate(dailyCacheForDayProvider);
@@ -222,6 +284,12 @@ class TransactionsNotifier extends AsyncNotifier<List<TxRecord>> {
       await repo.writeRevision(old.id!, old, new_);
     }
     await repo.update(new_);
+    await ref
+        .read(recalcServiceProvider)
+        .recomputeAll(
+          cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour,
+        );
+    await ref.read(accountsProvider.notifier).refresh();
     await refresh();
     ref.invalidate(dailyCacheForMonthProvider);
     ref.invalidate(dailyCacheForDayProvider);
@@ -231,6 +299,12 @@ class TransactionsNotifier extends AsyncNotifier<List<TxRecord>> {
   Future<void> remove(int id) async {
     final repo = ref.read(transactionRepoProvider);
     await repo.delete(id);
+    await ref
+        .read(recalcServiceProvider)
+        .recomputeAll(
+          cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour,
+        );
+    await ref.read(accountsProvider.notifier).refresh();
     await refresh();
     ref.invalidate(dailyCacheForMonthProvider);
     ref.invalidate(dailyCacheForDayProvider);
@@ -243,8 +317,10 @@ class GoalRepo {
   GoalRepo(this.db);
 
   Future<List<GoalRecord>> all() async {
-    final rows = await (await db.database)
-        .query('goals', orderBy: 'sort_order, id');
+    final rows = await (await db.database).query(
+      'goals',
+      orderBy: 'sort_order, id',
+    );
     return rows.map(GoalRecord.fromRow).toList();
   }
 
@@ -325,20 +401,25 @@ class GoalsNotifier extends AsyncNotifier<List<GoalRecord>> {
   Future<void> contribute(GoalRecord g, double amount, {String? notes}) async {
     final repo = ref.read(goalRepoProvider);
     if (g.id == null) return;
-    await repo.addContribution(GoalContribution(
-      goalId: g.id!,
-      amount: amount,
-      contributedAt: DateTime.now(),
-      notes: notes,
-    ));
+    await repo.addContribution(
+      GoalContribution(
+        goalId: g.id!,
+        amount: amount,
+        contributedAt: DateTime.now(),
+        notes: notes,
+      ),
+    );
     final newCurrent = g.currentAmount + amount;
     final completed = newCurrent >= g.targetAmount;
-    await repo.update(g.copyWith(
-      currentAmount: newCurrent,
-      status: completed ? GoalStatus.completed : g.status,
-      completedAt:
-          completed && g.completedAt == null ? DateTime.now() : g.completedAt,
-    ));
+    await repo.update(
+      g.copyWith(
+        currentAmount: newCurrent,
+        status: completed ? GoalStatus.completed : g.status,
+        completedAt: completed && g.completedAt == null
+            ? DateTime.now()
+            : g.completedAt,
+      ),
+    );
     await refresh();
   }
 }
@@ -370,8 +451,11 @@ class JournalRepo {
   }
 
   Future<void> delete(int id) async {
-    await (await db.database)
-        .delete('journal_entries', where: 'id = ?', whereArgs: [id]);
+    await (await db.database).delete(
+      'journal_entries',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 }
 
@@ -415,8 +499,10 @@ class CacheRepo {
     return DailyPerformance.fromRow(rows.first);
   }
 
-  Future<List<DailyPerformance>> forMonth(DateTime month,
-      {int cutoffHour = 3}) async {
+  Future<List<DailyPerformance>> forMonth(
+    DateTime month, {
+    int cutoffHour = 3,
+  }) async {
     final start = FinancialDay.startOfMonth(month, cutoffHour: cutoffHour);
     final end = FinancialDay.endOfMonth(month, cutoffHour: cutoffHour);
     final rows = await (await db.database).query(
@@ -471,8 +557,11 @@ class StreakRepo {
   }
 
   Future<StreakRecord?> byId(String id) async {
-    final rows = await (await db.database)
-        .query('streaks', where: 'id = ?', whereArgs: [id]);
+    final rows = await (await db.database).query(
+      'streaks',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
     if (rows.isEmpty) return null;
     return StreakRecord.fromRow(rows.first);
   }

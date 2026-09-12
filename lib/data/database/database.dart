@@ -13,6 +13,9 @@ import 'package:sqflite/sqflite.dart';
 ///       (recurring rules), and a search-friendly index on transactions.
 class AppDatabase {
   AppDatabase._();
+  AppDatabase.forTesting(Database database) : _db = database;
+  Future<void> createSchemaForTesting() async =>
+      _create(await database, currentVersion);
   static final AppDatabase instance = AppDatabase._();
 
   /// Bump this whenever the schema changes. Each bump MUST add an entry to
@@ -84,12 +87,8 @@ class AppDatabase {
     batch.execute(
       'CREATE INDEX idx_tx_occurred_at ON transactions(occurred_at)',
     );
-    batch.execute(
-      'CREATE INDEX idx_tx_category ON transactions(category)',
-    );
-    batch.execute(
-      'CREATE INDEX idx_tx_account ON transactions(account)',
-    );
+    batch.execute('CREATE INDEX idx_tx_category ON transactions(category)');
+    batch.execute('CREATE INDEX idx_tx_account ON transactions(account)');
 
     // Goals
     batch.execute('''
@@ -207,9 +206,7 @@ class AppDatabase {
         updated_at TEXT NOT NULL
       )
     ''');
-    batch.execute(
-      'CREATE INDEX idx_budgets_category ON budgets(category)',
-    );
+    batch.execute('CREATE INDEX idx_budgets_category ON budgets(category)');
 
     // v2: Recurring transactions — rules that materialize real transactions.
     // `frequency` is one of: daily, weekly, monthly.
@@ -320,6 +317,7 @@ class AppDatabase {
       for (final t in tables) {
         await txn.delete(t);
       }
+      await txn.insert('settings', {'id': 1, 'display_name': 'there', 'cutoff_hour': 3, 'currency': 'PHP'});
     });
   }
 

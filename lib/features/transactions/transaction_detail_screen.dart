@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/theme.dart';
 import '../../core/constants/categories.dart';
 import '../../core/utils/date_utils.dart';
-import '../../core/utils/financial_day.dart';
+
 import '../../core/utils/money.dart';
 import '../../data/models/enums.dart';
 import '../../data/models/models.dart';
@@ -73,17 +73,18 @@ class TransactionDetailScreen extends ConsumerWidget {
     if (newTx == null) return;
     final old = tx;
     await ref.read(transactionsProvider.notifier).edit(old, newTx);
-    await ref.read(recalcServiceProvider).recomputeFrom(
-        FinancialDay.key(newTx.occurredAt));
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transaction updated')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Transaction updated')));
     }
   }
 
   Future<void> _confirmDelete(
-      BuildContext context, WidgetRef ref, TxRecord tx) async {
+    BuildContext context,
+    WidgetRef ref,
+    TxRecord tx,
+  ) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -104,14 +105,13 @@ class TransactionDetailScreen extends ConsumerWidget {
       ),
     );
     if (ok != true || tx.id == null) return;
-    final day = FinancialDay.key(tx.occurredAt);
+
     await ref.read(transactionsProvider.notifier).remove(tx.id!);
-    await ref.read(recalcServiceProvider).recomputeFrom(day);
     if (context.mounted) {
       context.pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Transaction deleted')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Transaction deleted')));
     }
   }
 }
@@ -171,7 +171,8 @@ class _DetailBody extends StatelessWidget {
         _DetailRow(label: 'Account', value: tx.account),
         _DetailRow(label: 'Date', value: D.fullDate(tx.occurredAt)),
         _DetailRow(label: 'Time', value: D.time(tx.occurredAt)),
-        if ((tx.notes ?? '').isNotEmpty) _DetailRow(label: 'Notes', value: tx.notes!),
+        if ((tx.notes ?? '').isNotEmpty)
+          _DetailRow(label: 'Notes', value: tx.notes!),
       ],
     );
   }
@@ -236,7 +237,9 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
   @override
   void initState() {
     super.initState();
-    _amountCtrl = TextEditingController(text: widget.tx.amount.toStringAsFixed(2));
+    _amountCtrl = TextEditingController(
+      text: widget.tx.amount.toStringAsFixed(2),
+    );
     _notesCtrl = TextEditingController(text: widget.tx.notes ?? '');
     _tagsCtrl = TextEditingController(text: widget.tx.tags ?? '');
     _date = widget.tx.occurredAt;
@@ -253,10 +256,10 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
 
   void _save() {
     final amount = double.tryParse(_amountCtrl.text.trim());
-    if (amount == null || amount <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invalid amount')),
-      );
+    if (amount == null || !amount.isFinite || amount <= 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Invalid amount')));
       return;
     }
     Navigator.pop(
@@ -309,7 +312,9 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
             const SizedBox(height: 16),
             TextField(
               controller: _amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: const InputDecoration(labelText: 'Amount'),
             ),
             const SizedBox(height: 12),

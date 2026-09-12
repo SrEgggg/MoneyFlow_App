@@ -71,26 +71,34 @@ class SmartInsightsRuleEngine {
 
     // 1. Savings up/down vs last month
     final thisMonthSaved = thisMonthCache.fold<double>(
-        0, (a, d) => a + d.savedAmount);
+      0,
+      (a, d) => a + d.savedAmount,
+    );
     final lastMonthSaved = lastMonthCache.fold<double>(
-        0, (a, d) => a + d.savedAmount);
+      0,
+      (a, d) => a + d.savedAmount,
+    );
     if (lastMonthSaved > 0) {
       final pct = ((thisMonthSaved - lastMonthSaved) / lastMonthSaved) * 100;
       if (pct >= 1) {
-        insights.add(SmartInsight(
-          id: 'savings_up',
-          message: 'You saved ${pct.toStringAsFixed(0)}% more this month.',
-          icon: Icons.trending_up,
-          color: const Color(0xFF22C55E),
-        ));
+        insights.add(
+          SmartInsight(
+            id: 'savings_up',
+            message: 'You saved ${pct.toStringAsFixed(0)}% more this month.',
+            icon: Icons.trending_up,
+            color: const Color(0xFF22C55E),
+          ),
+        );
       } else if (pct <= -1) {
-        insights.add(SmartInsight(
-          id: 'savings_down',
-          message:
-              'You saved ${pct.abs().toStringAsFixed(0)}% less this month.',
-          icon: Icons.trending_down,
-          color: const Color(0xFFEF4444),
-        ));
+        insights.add(
+          SmartInsight(
+            id: 'savings_down',
+            message:
+                'You saved ${pct.abs().toStringAsFixed(0)}% less this month.',
+            icon: Icons.trending_down,
+            color: const Color(0xFFEF4444),
+          ),
+        );
       }
     }
 
@@ -101,14 +109,14 @@ class SmartInsightsRuleEngine {
       final diff = thisFood - lastFood;
       if (diff.abs() >= 100) {
         final verb = diff > 0 ? 'increased' : 'decreased';
-        insights.add(SmartInsight(
-          id: 'food_change',
-          message:
-              'Food spending $verb ${_peso(diff.abs().round())}.',
-          icon: Icons.restaurant_menu,
-          color:
-              diff > 0 ? const Color(0xFFF97316) : const Color(0xFF22C55E),
-        ));
+        insights.add(
+          SmartInsight(
+            id: 'food_change',
+            message: 'Food spending $verb ${_peso(diff.abs().round())}.',
+            icon: Icons.restaurant_menu,
+            color: diff > 0 ? const Color(0xFFF97316) : const Color(0xFF22C55E),
+          ),
+        );
       }
     }
 
@@ -120,13 +128,15 @@ class SmartInsightsRuleEngine {
         if (remaining <= 0) continue;
         final months = (remaining / avgMonthlySavings).ceil();
         if (months <= 24) {
-          insights.add(SmartInsight(
-            id: 'goal_eta_${g.id}',
-            message:
-                "You're projected to reach '${g.name}' in $months ${months == 1 ? "month" : "months"}.",
-            icon: g.kind.icon,
-            color: g.kind.color,
-          ));
+          insights.add(
+            SmartInsight(
+              id: 'goal_eta_${g.id}',
+              message:
+                  "You're projected to reach '${g.name}' in $months ${months == 1 ? "month" : "months"}.",
+              icon: g.kind.icon,
+              color: g.kind.color,
+            ),
+          );
         }
       }
     }
@@ -139,21 +149,25 @@ class SmartInsightsRuleEngine {
       if (lastTxDay != null) {
         final diff = FinancialDay.today().difference(lastTxDay).inDays;
         if (diff >= 1) {
-          insights.add(SmartInsight(
-            id: 'streak_at_risk',
-            message:
-                "Don't break your $loggingStreak-day logging streak — log today's activity.",
-            icon: Icons.local_fire_department,
-            color: const Color(0xFFEF4444),
-          ));
+          insights.add(
+            SmartInsight(
+              id: 'streak_at_risk',
+              message:
+                  "Don't break your $loggingStreak-day logging streak — log today's activity.",
+              icon: Icons.local_fire_department,
+              color: const Color(0xFFEF4444),
+            ),
+          );
         } else {
-          insights.add(SmartInsight(
-            id: 'streak_active',
-            message:
-                "🔥 $loggingStreak-day logging streak — keep it going today!",
-            icon: Icons.local_fire_department,
-            color: const Color(0xFFF97316),
-          ));
+          insights.add(
+            SmartInsight(
+              id: 'streak_active',
+              message:
+                  "🔥 $loggingStreak-day logging streak — keep it going today!",
+              icon: Icons.local_fire_department,
+              color: const Color(0xFFF97316),
+            ),
+          );
         }
       }
     }
@@ -163,7 +177,10 @@ class SmartInsightsRuleEngine {
   }
 
   static double _sumForCategory(
-      List<TxRecord> txs, String category, List<DailyPerformance> cacheDays) {
+    List<TxRecord> txs,
+    String category,
+    List<DailyPerformance> cacheDays,
+  ) {
     if (cacheDays.isEmpty) return 0;
     final dayKeys = cacheDays.map((d) => d.date).toSet();
     double total = 0;
@@ -190,49 +207,57 @@ class SmartInsightsRuleEngine {
 }
 
 /// The main Home data provider.
-final homeSummaryProvider =
-    FutureProvider<HomeSummary>((ref) async {
+final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  final cutoffHour = 3;
+  final cutoffHour = (await ref.watch(settingsProvider.future)).cutoffHour;
 
-  final accountRepo = AccountRepo(db);
-  final txRepo = TransactionRepo(db);
-  final goalRepo = GoalRepo(db);
   final cacheRepo = CacheRepo(db);
-  final streakRepo = StreakRepo(db);
 
-  final accounts = await accountRepo.all();
-  final allTx = await txRepo.all(limit: 1000);
-  final goals = await goalRepo.byStatus(GoalStatus.active);
-  final streaks = await streakRepo.all();
+  final accounts = await ref.watch(accountsProvider.future);
+  final allTx = await ref.watch(transactionsProvider.future);
+  final goals = (await ref.watch(
+    goalsProvider.future,
+  )).where((g) => g.status == GoalStatus.active).toList();
+  final streaks = await ref.watch(streaksProvider.future);
 
   // Compute current month range
-  final now = DateTime.now();
-  final thisMonthStart = DateTime(now.year, now.month, 1);
-  final thisMonthEnd = DateTime(now.year, now.month + 1, 1)
-      .subtract(const Duration(days: 1));
-  final lastMonthStart = DateTime(now.year, now.month - 1, 1);
+  final now = FinancialDay.today(cutoffHour: cutoffHour);
+  final thisMonthStart = DateTime(now.year, now.month, 1, cutoffHour);
+  final thisMonthEnd = DateTime(
+    now.year,
+    now.month + 1,
+    1,
+  ).subtract(const Duration(days: 1));
+  final lastMonthStart = DateTime(now.year, now.month - 1, 1, cutoffHour);
   final lastMonthEnd = thisMonthStart.subtract(const Duration(days: 1));
 
-  final thisMonthCache =
-      await cacheRepo.rangeInclusive(thisMonthStart, thisMonthEnd,
-          cutoffHour: cutoffHour);
-  final lastMonthCache =
-      await cacheRepo.rangeInclusive(lastMonthStart, lastMonthEnd,
-          cutoffHour: cutoffHour);
+  final thisMonthCache = await cacheRepo.rangeInclusive(
+    thisMonthStart,
+    thisMonthEnd,
+    cutoffHour: cutoffHour,
+  );
+  final lastMonthCache = await cacheRepo.rangeInclusive(
+    lastMonthStart,
+    lastMonthEnd,
+    cutoffHour: cutoffHour,
+  );
 
   // Last 90 days for forecasting
   final ninetyStart = now.subtract(const Duration(days: 90));
-  final recentCache = await cacheRepo.rangeInclusive(ninetyStart, now,
-      cutoffHour: cutoffHour);
-  final recentSaved =
-      recentCache.fold<double>(0, (a, d) => a + d.savedAmount);
+  final recentCache = await cacheRepo.rangeInclusive(
+    ninetyStart,
+    now,
+    cutoffHour: cutoffHour,
+  );
+  final recentSaved = recentCache.fold<double>(0, (a, d) => a + d.savedAmount);
   final avgMonthlySavings = recentSaved / 3.0;
 
   // Monthly numbers
   final monthlyIncome = thisMonthCache.fold<double>(0, (a, d) => a + d.income);
-  final monthlyExpenses =
-      thisMonthCache.fold<double>(0, (a, d) => a + d.expenses);
+  final monthlyExpenses = thisMonthCache.fold<double>(
+    0,
+    (a, d) => a + d.expenses,
+  );
   final monthlySaved = monthlyIncome - monthlyExpenses;
   final double monthlyGoal = avgMonthlySavings > 0 ? avgMonthlySavings : 5000;
 
@@ -242,34 +267,35 @@ final homeSummaryProvider =
 
   // Net worth change vs last month (use balances of accounts - all-time saved
   // approximation). For simplicity, use lastMonthSaved as a proxy.
-  final lastMonthSaved =
-      lastMonthCache.fold<double>(0, (a, d) => a + d.savedAmount);
-  final thisMonthSaved =
-      thisMonthCache.fold<double>(0, (a, d) => a + d.savedAmount);
+  final lastMonthSaved = lastMonthCache.fold<double>(
+    0,
+    (a, d) => a + d.savedAmount,
+  );
+  final thisMonthSaved = thisMonthCache.fold<double>(
+    0,
+    (a, d) => a + d.savedAmount,
+  );
   final netWorthChangePercent = lastMonthSaved > 0
       ? ((thisMonthSaved - lastMonthSaved) / lastMonthSaved) * 100
       : 0.0;
 
   // Total savings across all accounts
-  final totalSavings =
-      accounts.fold<double>(0, (a, acc) => a + acc.balance);
+  final totalSavings = accounts.fold<double>(0, (a, acc) => a + acc.balance);
 
   // Streaks
   final savingStreak = streaks
-      .firstWhere((s) => s.id == StreakKind.saving.id,
-          orElse: () => const StreakRecord(
-                id: 'saving',
-                currentCount: 0,
-                bestCount: 0,
-              ))
+      .firstWhere(
+        (s) => s.id == StreakKind.saving.id,
+        orElse: () =>
+            const StreakRecord(id: 'saving', currentCount: 0, bestCount: 0),
+      )
       .currentCount;
   final loggingStreak = streaks
-      .firstWhere((s) => s.id == StreakKind.logging.id,
-          orElse: () => const StreakRecord(
-                id: 'logging',
-                currentCount: 0,
-                bestCount: 0,
-              ))
+      .firstWhere(
+        (s) => s.id == StreakKind.logging.id,
+        orElse: () =>
+            const StreakRecord(id: 'logging', currentCount: 0, bestCount: 0),
+      )
       .currentCount;
 
   final insights = SmartInsightsRuleEngine.build(

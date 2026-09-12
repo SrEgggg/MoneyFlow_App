@@ -177,4 +177,6 @@ final firstRunProvider = FutureProvider<void>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   await FirstRunInitializer(db).ensureInitialized();
   await ref.read(recurringRunnerProvider).materializeDue();
+  final settings = await ref.read(settingsRepoProvider).load();
+  await ref.read(recalcServiceProvider).recomputeAll(cutoffHour: settings.cutoffHour);
 });

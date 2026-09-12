@@ -28,10 +28,7 @@ class RecalculationService {
   });
 
   /// Full recompute from [from] to today (inclusive).
-  Future<void> recomputeFrom(
-    DateTime from, {
-    int cutoffHour = 3,
-  }) async {
+  Future<void> recomputeFrom(DateTime from, {int cutoffHour = 3}) async {
     final today = FinancialDay.today(cutoffHour: cutoffHour);
     final padStart = from.subtract(const Duration(hours: 6));
     final padEnd = today.add(const Duration(days: 1));
@@ -50,6 +47,13 @@ class RecalculationService {
       }
     }
 
+    await (await cache.db.database).delete(
+      'daily_performance_cache',
+      where: 'date >= ?',
+      whereArgs: [
+        FinancialDay.key(from, cutoffHour: cutoffHour).toIso8601String(),
+      ],
+    );
     final allowance = await _computeAllowance(cutoffHour: cutoffHour);
 
     for (final entry in byDay.entries) {
@@ -61,15 +65,17 @@ class RecalculationService {
         expenses: b.expenses,
         allowance: allowance,
       );
-      await cache.upsert(DailyPerformance(
-        date: DateTime(k.year, k.month, k.day),
-        income: b.income,
-        expenses: b.expenses,
-        savedAmount: saved,
-        allowance: allowance,
-        status: status,
-        computedAt: DateTime.now(),
-      ));
+      await cache.upsert(
+        DailyPerformance(
+          date: DateTime(k.year, k.month, k.day),
+          income: b.income,
+          expenses: b.expenses,
+          savedAmount: saved,
+          allowance: allowance,
+          status: status,
+          computedAt: DateTime.now(),
+        ),
+      );
     }
 
     await _updateStreaks(cutoffHour: cutoffHour);
@@ -78,7 +84,11 @@ class RecalculationService {
 
   Future<void> recomputeAll({int cutoffHour = 3}) async {
     final today = FinancialDay.today(cutoffHour: cutoffHour);
-    final earliest = today.subtract(const Duration(days: 365));
+    final all = await tx.all();
+    final earliest = all.isEmpty
+        ? today
+        : all.map((t) => t.occurredAt).reduce((a, b) => a.isBefore(b) ? a : b);
+    await (await cache.db.database).delete('daily_performance_cache');
     await recomputeFrom(earliest, cutoffHour: cutoffHour);
   }
 
@@ -178,24 +188,30 @@ class RecalculationService {
       if (diff <= 1) goalCurrent = goalRun;
     }
 
-    await streaks.upsert(StreakRecord(
-      id: StreakKind.saving.id,
-      currentCount: savingCurrent,
-      bestCount: math.max(savingBest, savingCurrent),
-      lastQualifiedDay: savingLast,
-    ));
-    await streaks.upsert(StreakRecord(
-      id: StreakKind.logging.id,
-      currentCount: loggingCurrent,
-      bestCount: math.max(loggingBest, loggingCurrent),
-      lastQualifiedDay: loggingLast,
-    ));
-    await streaks.upsert(StreakRecord(
-      id: StreakKind.goal.id,
-      currentCount: goalCurrent,
-      bestCount: math.max(goalBest, goalCurrent),
-      lastQualifiedDay: goalLast,
-    ));
+    await streaks.upsert(
+      StreakRecord(
+        id: StreakKind.saving.id,
+        currentCount: savingCurrent,
+        bestCount: math.max(savingBest, savingCurrent),
+        lastQualifiedDay: savingLast,
+      ),
+    );
+    await streaks.upsert(
+      StreakRecord(
+        id: StreakKind.logging.id,
+        currentCount: loggingCurrent,
+        bestCount: math.max(loggingBest, loggingCurrent),
+        lastQualifiedDay: loggingLast,
+      ),
+    );
+    await streaks.upsert(
+      StreakRecord(
+        id: StreakKind.goal.id,
+        currentCount: goalCurrent,
+        bestCount: math.max(goalBest, goalCurrent),
+        lastQualifiedDay: goalLast,
+      ),
+    );
   }
 
   Future<bool> _goalContributionOn(DateTime day) async {
@@ -215,30 +231,30 @@ class RecalculationService {
     final days = await cache.all();
     final lifetimeSaved = days.fold<double>(0, (a, d) => a + d.savedAmount);
     final allGoals = await goals.all();
-    final completedGoals =
-        allGoals.where((g) => g.status == GoalStatus.completed).length;
+    final completedGoals = allGoals
+        .where((g) => g.status == GoalStatus.completed)
+        .length;
     final journalCount = await _journalCount();
     final streakList = await streaks.all();
     final savingStreak = streakList
-        .firstWhere((s) => s.id == StreakKind.saving.id,
-            orElse: () => const StreakRecord(
-                  id: 'saving',
-                  currentCount: 0,
-                  bestCount: 0,
-                ))
+        .firstWhere(
+          (s) => s.id == StreakKind.saving.id,
+          orElse: () =>
+              const StreakRecord(id: 'saving', currentCount: 0, bestCount: 0),
+        )
         .currentCount;
     final loggingStreak = streakList
-        .firstWhere((s) => s.id == StreakKind.logging.id,
-            orElse: () => const StreakRecord(
-                  id: 'logging',
-                  currentCount: 0,
-                  bestCount: 0,
-                ))
+        .firstWhere(
+          (s) => s.id == StreakKind.logging.id,
+          orElse: () =>
+              const StreakRecord(id: 'logging', currentCount: 0, bestCount: 0),
+        )
         .currentCount;
-    final emergencyProgress = allGoals
-        .where((g) => g.kind == GoalKind.emergency)
-        .map((g) => g.progress)
-        .fold<double>(0, (a, p) => a > p ? a : p) *
+    final emergencyProgress =
+        allGoals
+            .where((g) => g.kind == GoalKind.emergency)
+            .map((g) => g.progress)
+            .fold<double>(0, (a, p) => a > p ? a : p) *
         100;
 
     final checks = <String, bool>{
@@ -266,8 +282,7 @@ class RecalculationService {
 
   Future<int> _journalCount() async {
     final db = await (cache.db.database);
-    final rows =
-        await db.rawQuery('SELECT COUNT(*) AS c FROM journal_entries');
+    final rows = await db.rawQuery('SELECT COUNT(*) AS c FROM journal_entries');
     return (rows.first['c'] as int?) ?? 0;
   }
 }
