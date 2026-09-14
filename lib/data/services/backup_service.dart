@@ -14,14 +14,14 @@ import '../../core/utils/app_logger.dart';
 const int kBackupFormatVersion = 2;
 
 /// All user-data tables we know how to back up. Order matters for
-/// restore: child tables before parents, and cache/streaks last because
+/// restore: parent tables before children, and cache/streaks last because
 /// they aggregate the rest.
 const List<String> kBackupTables = [
   'recurring_transactions',
   'budgets',
   'accounts',
-  'goal_contributions',
   'goals',
+  'goal_contributions',
   'transactions',
   'journal_entries',
   'daily_performance_cache',
@@ -113,6 +113,22 @@ class BackupService {
       throw const FormatException('Missing or invalid "tables" envelope');
     }
 
+    // Validate the envelope before a replace operation can remove saved data.
+    for (final name in [
+      'accounts',
+      'goals',
+      'goal_contributions',
+      'transactions',
+      'settings',
+    ]) {
+      final rows = tables[name];
+      if (rows is! List || rows.any((row) => row is! Map)) {
+        throw FormatException('Missing or invalid backup table: $name');
+      }
+    }
+    if ((tables['settings'] as List).length != 1) {
+      throw const FormatException('Backup must include one settings record.');
+    }
     final database = await db.database;
     final counts = <String, int>{};
 
@@ -200,8 +216,7 @@ class RestoreReport {
     required this.rowCounts,
   });
 
-  int get totalRows =>
-      rowCounts.values.fold<int>(0, (a, b) => a + b);
+  int get totalRows => rowCounts.values.fold<int>(0, (a, b) => a + b);
 }
 
 /// Lightweight description of the backup contents, for the Settings UI.
@@ -218,7 +233,9 @@ class BackupFileSummary {
   });
 
   static Future<BackupFileSummary> peek(File file) async {
-    final head = await file.openRead(0, 64 * 1024).fold<String>(
+    final head = await file
+        .openRead(0, 64 * 1024)
+        .fold<String>(
           '',
           (acc, chunk) => acc + utf8.decode(chunk, allowMalformed: true),
         );
@@ -232,8 +249,9 @@ class BackupFileSummary {
     }
     final format = (decoded['format'] as num?)?.toInt() ?? 0;
     final exportedAtRaw = decoded['exported_at'] as String?;
-    final exportedAt =
-        exportedAtRaw == null ? null : DateTime.tryParse(exportedAtRaw);
+    final exportedAt = exportedAtRaw == null
+        ? null
+        : DateTime.tryParse(exportedAtRaw);
     final tables = decoded['tables'];
     final counts = <String, int>{};
     if (tables is Map<String, Object?>) {

@@ -35,13 +35,15 @@ class _ContributionDialogState extends State<_ContributionDialog> {
 
   void _submit() {
     final v = double.tryParse(_ctrl.text.trim());
-    if (v == null || v <= 0) {
+    if (v == null || !v.isFinite || v <= 0 || v > 999999999.99) {
       setState(() => _error = 'Enter a valid amount');
       return;
     }
     if (v > widget.goal.targetAmount - widget.goal.currentAmount) {
-      setState(() => _error =
-          'Amount exceeds the remaining ${Money.compact(widget.goal.targetAmount - widget.goal.currentAmount)}');
+      setState(
+        () => _error =
+            'Amount exceeds the remaining ${Money.compact(widget.goal.targetAmount - widget.goal.currentAmount)}',
+      );
       return;
     }
     Navigator.pop(context, v);
@@ -49,8 +51,7 @@ class _ContributionDialogState extends State<_ContributionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final remaining =
-        widget.goal.targetAmount - widget.goal.currentAmount;
+    final remaining = widget.goal.targetAmount - widget.goal.currentAmount;
     return AlertDialog(
       backgroundColor: AppColors.surfaceContainer,
       title: Text('Contribute to ${widget.goal.name}'),
@@ -86,10 +87,7 @@ class _ContributionDialogState extends State<_ContributionDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('Contribute'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Contribute')),
       ],
     );
   }

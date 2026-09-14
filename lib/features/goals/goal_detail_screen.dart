@@ -1,3 +1,6 @@
+import 'package:go_router/go_router.dart';
+import '../../app/router.dart';
+import 'create_goal_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -44,18 +47,80 @@ class _Body extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final color = goal.kind.color;
     final pct = goal.progress;
-    final remaining = goal.targetAmount - goal.currentAmount;
+    final remaining = (goal.targetAmount - goal.currentAmount).clamp(
+      0,
+      double.infinity,
+    );
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
       children: [
+        Wrap(
+          spacing: 12,
+          children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit Goal'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => CreateGoalScreen(goal: goal),
+                ),
+              ),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Delete Goal'),
+              onPressed: () async {
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    title: const Text('Delete Goal?'),
+                    content: const Text(
+                      'This permanently deletes the goal and its contribution log. Account balances and income/expense transactions are unchanged. This action cannot be undone.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: const Text('Cancel'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed != true) return;
+                try {
+                  await ref.read(goalsProvider.notifier).remove(goal.id!);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Goal successfully deleted.')),
+                  );
+                  context.go(Routes.goals);
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Could not delete the goal. Please try again.',
+                        ),
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         // Header
         SectionCard(
           child: Column(
             children: [
               ProgressRing(
                 progress: pct,
-                centerText: '${(pct * 100).toInt()}%',
+                centerText: '${(pct * 100).toStringAsFixed(1)}%',
                 size: 96,
                 stroke: 10,
                 progressColor: color,
@@ -78,8 +143,9 @@ class _Body extends ConsumerWidget {
                 ],
               ),
               const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 20,
+                runSpacing: 12,
                 children: [
                   _Stat(
                     label: 'Current',
@@ -138,17 +204,33 @@ class _Body extends ConsumerWidget {
               if (goal.isCompleted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                      content: Text('This goal is already completed')),
+                    content: Text('This goal is already completed'),
+                  ),
                 );
                 return;
               }
               final amount = await showContributionDialog(context, goal: goal);
               if (amount == null) return;
-              await ref.read(goalsProvider.notifier).contribute(goal, amount);
+              try {
+                await ref.read(goalsProvider.notifier).contribute(goal, amount);
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Could not add contribution. Check the remaining target and try again.',
+                      ),
+                    ),
+                  );
+                }
+                return;
+              }
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Added ${Money.format(amount)} to ${goal.name}'),
+                    content: Text(
+                      'Added ${Money.format(amount)} to ${goal.name}',
+                    ),
                   ),
                 );
               }
@@ -159,6 +241,11 @@ class _Body extends ConsumerWidget {
           child: FutureBuilder<List<GoalContribution>>(
             future: ref.read(goalRepoProvider).contributionsFor(goal.id!),
             builder: (context, snap) {
+              if (snap.hasError) {
+                return const Text(
+                  'Could not load contributions. Reopen this goal to retry.',
+                );
+              }
               if (!snap.hasData) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
@@ -231,11 +318,7 @@ class _Stat extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
-  const _Stat({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
+  const _Stat({required this.label, required this.value, required this.color});
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -268,11 +351,7 @@ class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
   final Color? valueColor;
-  const _DetailRow({
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
+  const _DetailRow({required this.label, required this.value, this.valueColor});
   @override
   Widget build(BuildContext context) {
     return Padding(

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'core/utils/activity_summary.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/database/database.dart';
@@ -87,20 +89,20 @@ final backupServiceProvider = Provider<BackupService>((ref) {
 /// Settings value stream (rebuilds whenever settings change).
 final settingsProvider =
     AsyncNotifierProvider<SettingsNotifier, SettingsRecord>(
-  SettingsNotifier.new,
-);
+      SettingsNotifier.new,
+    );
 
 /// Reactive list of all transactions.
 final transactionsProvider =
     AsyncNotifierProvider<TransactionsNotifier, List<TxRecord>>(
-  TransactionsNotifier.new,
-);
+      TransactionsNotifier.new,
+    );
 
 /// Reactive list of all accounts.
 final accountsProvider =
     AsyncNotifierProvider<AccountsNotifier, List<AccountRecord>>(
-  AccountsNotifier.new,
-);
+      AccountsNotifier.new,
+    );
 
 /// Reactive list of goals.
 final goalsProvider = AsyncNotifierProvider<GoalsNotifier, List<GoalRecord>>(
@@ -110,49 +112,52 @@ final goalsProvider = AsyncNotifierProvider<GoalsNotifier, List<GoalRecord>>(
 /// Reactive list of journal entries.
 final journalProvider =
     AsyncNotifierProvider<JournalNotifier, List<JournalRecord>>(
-  JournalNotifier.new,
-);
+      JournalNotifier.new,
+    );
 
 /// Reactive cache entries for a given month range.
 final dailyCacheForMonthProvider = FutureProvider.family
-    .autoDispose<List<DailyPerformance>, ({DateTime month, int cutoffHour})>(
-  (ref, args) async {
-    final repo = ref.watch(cacheRepoProvider);
-    return repo.forMonth(args.month, cutoffHour: args.cutoffHour);
-  },
-);
+    .autoDispose<List<DailyPerformance>, ({DateTime month, int cutoffHour})>((
+      ref,
+      args,
+    ) async {
+      final repo = ref.watch(cacheRepoProvider);
+      return repo.forMonth(args.month, cutoffHour: args.cutoffHour);
+    });
 
 /// Daily performance for one day.
 final dailyCacheForDayProvider = FutureProvider.family
-    .autoDispose<DailyPerformance?, ({DateTime date, int cutoffHour})>(
-  (ref, args) async {
-    final repo = ref.watch(cacheRepoProvider);
-    return repo.forDay(args.date, cutoffHour: args.cutoffHour);
-  },
-);
+    .autoDispose<DailyPerformance?, ({DateTime date, int cutoffHour})>((
+      ref,
+      args,
+    ) async {
+      final repo = ref.watch(cacheRepoProvider);
+      return repo.forDay(args.date, cutoffHour: args.cutoffHour);
+    });
 
 /// All streak counters.
-final streaksProvider = AsyncNotifierProvider<StreaksNotifier, List<StreakRecord>>(
-  StreaksNotifier.new,
-);
+final streaksProvider =
+    AsyncNotifierProvider<StreaksNotifier, List<StreakRecord>>(
+      StreaksNotifier.new,
+    );
 
 /// Earned achievements.
 final earnedAchievementsProvider =
     AsyncNotifierProvider<EarnedAchievementsNotifier, List<EarnedAchievement>>(
-  EarnedAchievementsNotifier.new,
-);
+      EarnedAchievementsNotifier.new,
+    );
 
 /// Reactive list of budget rules.
 final budgetsProvider =
     AsyncNotifierProvider<BudgetsNotifier, List<BudgetRecord>>(
-  BudgetsNotifier.new,
-);
+      BudgetsNotifier.new,
+    );
 
 /// Reactive list of recurring transaction rules.
 final recurringProvider =
     AsyncNotifierProvider<RecurringNotifier, List<RecurringTransactionRecord>>(
-  RecurringNotifier.new,
-);
+      RecurringNotifier.new,
+    );
 
 /// Recalculation service — used by transaction/goal writes to update cache.
 final recalcServiceProvider = Provider<RecalculationService>((ref) {
@@ -176,7 +181,40 @@ final recalcServiceProvider = Provider<RecalculationService>((ref) {
 final firstRunProvider = FutureProvider<void>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   await FirstRunInitializer(db).ensureInitialized();
-  await ref.read(recurringRunnerProvider).materializeDue();
+  try {
+    final count = await ref.read(recurringRunnerProvider).materializeDue();
+    ref.read(recurringIssueProvider.notifier).state = count >= 1000
+        ? 'Posted 1,000 scheduled transactions. Review recurring rules and run again to check remaining overdue dates.'
+        : null;
+  } catch (error, stack) {
+    ref
+        .read(appLoggerProvider)
+        .error(
+          'Recurring posting failed; batch rolled back.',
+          error: error,
+          stack: stack,
+        );
+    ref.read(recurringIssueProvider.notifier).state =
+        'Scheduled transactions could not be posted. This batch made no changes. Review your recurring rules and retry.';
+  }
   final settings = await ref.read(settingsRepoProvider).load();
-  await ref.read(recalcServiceProvider).recomputeAll(cutoffHour: settings.cutoffHour);
+  await ref
+      .read(recalcServiceProvider)
+      .recomputeAll(cutoffHour: settings.cutoffHour);
 });
+
+/// Refresh time-dependent activity when the date changes, including after resume.
+final activityClockProvider = StreamProvider<DateTime>((ref) async* {
+  yield DateTime.now();
+  yield* Stream.periodic(const Duration(minutes: 1), (_) => DateTime.now());
+});
+
+final activityProvider = FutureProvider<ActivitySummary>((ref) async {
+  final transactions = ref.watch(transactionsProvider.future);
+  ref.watch(goalsProvider);
+  final contributions = await ref.watch(goalRepoProvider).allContributions();
+  return ActivitySummary(await transactions, contributions);
+});
+
+/// A failed automatic batch must be visible without blocking access to the app.
+final recurringIssueProvider = StateProvider<String?>((ref) => null);

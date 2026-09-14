@@ -20,6 +20,12 @@ class StreaksScreen extends ConsumerWidget {
         data: (streaks) => ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text(
+                'Track real activity only. Today stays open until midnight; an empty completed day starts a new run. Never spend money just to keep a streak.',
+              ),
+            ),
             for (final s in streaks) _StreakCard(streak: s),
           ],
         ),
@@ -41,14 +47,14 @@ class _StreakCard extends StatelessWidget {
           label: 'Saving Streak',
           icon: Icons.savings,
           color: AppColors.primary,
-          hint: 'Days in a row where you saved money',
+          hint: 'Consecutive days with a goal savings contribution',
         );
       case 'logging':
         return (
           label: 'Logging Streak',
           icon: Icons.event_repeat,
           color: const Color(0xFF3B82F6),
-          hint: 'Days in a row where you logged a transaction',
+          hint: 'Consecutive days with a transaction or goal contribution',
         );
       case 'goal':
         return (

@@ -93,15 +93,42 @@ class AccountRepo {
   }
 
   Future<void> update(AccountRecord r) async {
-    if (r.name.trim().isEmpty || !r.balance.isFinite) throw ArgumentError('Enter a valid account name and balance');
+    if (r.name.trim().isEmpty || !r.balance.isFinite) {
+      throw ArgumentError('Enter a valid account name and balance');
+    }
     await (await db.database).transaction((txn) async {
-      final old = await txn.query('accounts', where: 'id = ?', whereArgs: [r.id]);
+      final old = await txn.query(
+        'accounts',
+        where: 'id = ?',
+        whereArgs: [r.id],
+      );
       if (old.isEmpty) throw StateError('Account no longer exists');
-      final duplicates = await txn.query('accounts', where: 'name = ? AND id != ?', whereArgs: [r.name, r.id]);
-      if (duplicates.isNotEmpty) throw StateError('Account names must be unique');
-      await txn.update('transactions', {'account': r.name}, where: 'account = ?', whereArgs: [old.single['name']]);
-      await txn.update('recurring_transactions', {'account': r.name}, where: 'account = ?', whereArgs: [old.single['name']]);
-      await txn.update('accounts', r.toRow(), where: 'id = ?', whereArgs: [r.id]);
+      final duplicates = await txn.query(
+        'accounts',
+        where: 'name = ? AND id != ?',
+        whereArgs: [r.name, r.id],
+      );
+      if (duplicates.isNotEmpty) {
+        throw StateError('Account names must be unique');
+      }
+      await txn.update(
+        'transactions',
+        {'account': r.name},
+        where: 'account = ?',
+        whereArgs: [old.single['name']],
+      );
+      await txn.update(
+        'recurring_transactions',
+        {'account': r.name},
+        where: 'account = ?',
+        whereArgs: [old.single['name']],
+      );
+      await txn.update(
+        'accounts',
+        r.toRow(),
+        where: 'id = ?',
+        whereArgs: [r.id],
+      );
     });
   }
 
@@ -110,13 +137,23 @@ class AccountRepo {
       final old = await txn.query('accounts', where: 'id = ?', whereArgs: [id]);
       if (old.isEmpty) return;
       for (final table in ['transactions', 'recurring_transactions']) {
-        final linked = await txn.query(table, where: 'account = ?', whereArgs: [old.single['name']], limit: 1);
-        if (linked.isNotEmpty) throw StateError('Move or remove linked transactions and recurring rules before deleting this account');
+        final linked = await txn.query(
+          table,
+          where: 'account = ?',
+          whereArgs: [old.single['name']],
+          limit: 1,
+        );
+        if (linked.isNotEmpty) {
+          throw StateError(
+            'Move or remove linked transactions and recurring rules before deleting this account',
+          );
+        }
       }
       await txn.delete('accounts', where: 'id = ?', whereArgs: [id]);
     });
   }
 }
+
 class AccountsNotifier extends AsyncNotifier<List<AccountRecord>> {
   @override
   Future<List<AccountRecord>> build() async {
@@ -186,15 +223,23 @@ class TransactionRepo {
       'UPDATE accounts SET balance = ROUND(balance + ?, 2) WHERE name = ?',
       [delta, tx.account],
     );
-    if (changed != 1) { throw StateError('Choose an existing, uniquely named account'); }
+    if (changed != 1) {
+      throw StateError('Choose an existing, uniquely named account');
+    }
   }
 
   Future<int> insert(TxRecord tx) async {
-    return (await db.database).transaction((txn) async {
-      await _adjustBalance(txn, tx, 1);
-      final row = Map<String, Object?>.from(tx.toRow())..remove('id');
-      return txn.insert('transactions', row);
-    });
+    return (await db.database).transaction(
+      (txn) => insertInTransaction(txn, tx),
+    );
+  }
+
+  /// Share the ordinary balance update with atomic multi-record operations.
+  /// The caller owns the database transaction and its commit/rollback.
+  Future<int> insertInTransaction(Transaction txn, TxRecord tx) async {
+    await _adjustBalance(txn, tx, 1);
+    final row = Map<String, Object?>.from(tx.toRow())..remove('id');
+    return txn.insert('transactions', row);
   }
 
   Future<void> update(TxRecord tx) async {
@@ -334,12 +379,31 @@ class GoalRepo {
     return rows.map(GoalRecord.fromRow).toList();
   }
 
+  void _validateGoal(GoalRecord g) {
+    if (g.name.trim().isEmpty ||
+        !g.targetAmount.isFinite ||
+        g.targetAmount <= 0 ||
+        g.targetAmount > 999999999.99 ||
+        !g.currentAmount.isFinite ||
+        g.currentAmount < 0) {
+      throw ArgumentError('Enter a goal name and a valid positive target.');
+    }
+    if (g.monthlyTarget != null &&
+        (!g.monthlyTarget!.isFinite ||
+            g.monthlyTarget! <= 0 ||
+            g.monthlyTarget! > 999999999.99)) {
+      throw ArgumentError('Monthly target must be a valid positive amount.');
+    }
+  }
+
   Future<int> insert(GoalRecord g) async {
+    _validateGoal(g);
     final row = Map<String, Object?>.from(g.toRow())..remove('id');
     return (await db.database).insert('goals', row);
   }
 
   Future<void> update(GoalRecord g) async {
+    _validateGoal(g);
     await (await db.database).update(
       'goals',
       g.toRow(),
@@ -349,7 +413,14 @@ class GoalRepo {
   }
 
   Future<void> delete(int id) async {
-    await (await db.database).delete('goals', where: 'id = ?', whereArgs: [id]);
+    await (await db.database).transaction((txn) async {
+      await txn.delete(
+        'goal_contributions',
+        where: 'goal_id = ?',
+        whereArgs: [id],
+      );
+      await txn.delete('goals', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   Future<List<GoalContribution>> contributionsFor(int goalId) async {
@@ -362,9 +433,50 @@ class GoalRepo {
     return rows.map(GoalContribution.fromRow).toList();
   }
 
+  Future<List<GoalContribution>> allContributions() async {
+    final rows = await (await db.database).query(
+      'goal_contributions',
+      orderBy: 'contributed_at DESC',
+    );
+    return rows.map(GoalContribution.fromRow).toList();
+  }
+
   Future<int> addContribution(GoalContribution c) async {
-    final row = Map<String, Object?>.from(c.toRow())..remove('id');
-    return (await db.database).insert('goal_contributions', row);
+    if (!c.amount.isFinite || c.amount <= 0 || c.amount > 999999999.99) {
+      throw ArgumentError('Please enter a valid amount greater than zero.');
+    }
+    return (await db.database).transaction((txn) async {
+      final rows = await txn.query(
+        'goals',
+        where: 'id = ?',
+        whereArgs: [c.goalId],
+      );
+      if (rows.isEmpty) throw StateError('Goal no longer exists.');
+      final goal = GoalRecord.fromRow(rows.single);
+      final current = goal.currentAmount + c.amount;
+      if (current > goal.targetAmount + 0.000001) {
+        throw StateError('Amount exceeds the remaining goal target.');
+      }
+      final id = await txn.insert(
+        'goal_contributions',
+        Map<String, Object?>.from(c.toRow())..remove('id'),
+      );
+      await txn.update(
+        'goals',
+        {
+          'current_amount': current,
+          'status': current >= goal.targetAmount
+              ? GoalStatus.completed.id
+              : goal.status.id,
+          'completed_at': current >= goal.targetAmount
+              ? c.contributedAt.toIso8601String()
+              : goal.completedAt?.toIso8601String(),
+        },
+        where: 'id = ?',
+        whereArgs: [c.goalId],
+      );
+      return id;
+    });
   }
 }
 
@@ -407,17 +519,6 @@ class GoalsNotifier extends AsyncNotifier<List<GoalRecord>> {
         amount: amount,
         contributedAt: DateTime.now(),
         notes: notes,
-      ),
-    );
-    final newCurrent = g.currentAmount + amount;
-    final completed = newCurrent >= g.targetAmount;
-    await repo.update(
-      g.copyWith(
-        currentAmount: newCurrent,
-        status: completed ? GoalStatus.completed : g.status,
-        completedAt: completed && g.completedAt == null
-            ? DateTime.now()
-            : g.completedAt,
       ),
     );
     await refresh();
@@ -578,13 +679,15 @@ class StreakRepo {
 class StreaksNotifier extends AsyncNotifier<List<StreakRecord>> {
   @override
   Future<List<StreakRecord>> build() async {
-    final repo = ref.watch(streakRepoProvider);
-    return repo.all();
+    final now = ref.watch(activityClockProvider).valueOrNull ?? DateTime.now();
+    final activity = await ref.watch(activityProvider.future);
+    return activity.streaks(now);
   }
 
   Future<void> refresh() async {
-    final repo = ref.read(streakRepoProvider);
-    state = AsyncData(await repo.all());
+    state = AsyncData(
+      (await ref.read(activityProvider.future)).streaks(DateTime.now()),
+    );
   }
 }
 

@@ -29,6 +29,13 @@ class Categories {
 
   static const List<TxCategory> expense = [
     TxCategory(
+      id: 'personal',
+      name: 'Personal',
+      icon: Icons.person_outline,
+      color: AppColors.primary,
+      kind: 'expense',
+    ),
+    TxCategory(
       id: 'food_dining',
       name: 'Food & Dining',
       icon: Icons.restaurant,
@@ -102,6 +109,20 @@ class Categories {
 
   static const List<TxCategory> income = [
     TxCategory(
+      id: 'business',
+      name: 'Business',
+      icon: Icons.storefront,
+      color: AppColors.primary,
+      kind: 'income',
+    ),
+    TxCategory(
+      id: 'bonus',
+      name: 'Bonus',
+      icon: Icons.celebration,
+      color: AppColors.primary,
+      kind: 'income',
+    ),
+    TxCategory(
       id: 'salary',
       name: 'Salary',
       icon: Icons.payments,
@@ -143,9 +164,6 @@ class Categories {
 
   static TxCategory byId(String id) {
     final list = [...income, ...expense];
-    return list.firstWhere(
-      (c) => c.id == id,
-      orElse: () => expense.last,
-    );
+    return list.firstWhere((c) => c.id == id, orElse: () => expense.last);
   }
 }

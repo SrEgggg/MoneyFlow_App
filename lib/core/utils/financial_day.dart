@@ -18,7 +18,8 @@ class FinancialDay {
   }
 
   /// Today's financial-day key.
-  static DateTime today({int cutoffHour = 3}) => key(DateTime.now());
+  static DateTime today({int cutoffHour = 3}) =>
+      key(DateTime.now(), cutoffHour: cutoffHour);
 
   /// Start of the financial month containing [date].
   static DateTime startOfMonth(DateTime date, {int cutoffHour = 3}) {

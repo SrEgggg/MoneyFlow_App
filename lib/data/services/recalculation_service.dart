@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import '../../core/utils/activity_summary.dart';
 
 import '../../core/utils/financial_day.dart';
 import '../models/enums.dart';
@@ -31,7 +31,7 @@ class RecalculationService {
   Future<void> recomputeFrom(DateTime from, {int cutoffHour = 3}) async {
     final today = FinancialDay.today(cutoffHour: cutoffHour);
     final padStart = from.subtract(const Duration(hours: 6));
-    final padEnd = today.add(const Duration(days: 1));
+    final padEnd = DateTime.now();
     final txs = await tx.range(padStart, padEnd);
 
     final byDay = <DateTime, _DayBucket>{};
@@ -127,104 +127,13 @@ class RecalculationService {
   }
 
   Future<void> _updateStreaks({int cutoffHour = 3}) async {
-    final days = await cache.all(cutoffHour: cutoffHour);
-    if (days.isEmpty) return;
-
-    days.sort((a, b) => a.date.compareTo(b.date));
-    final today = FinancialDay.today(cutoffHour: cutoffHour);
-
-    int savingCurrent = 0;
-    int savingBest = 0;
-    DateTime? savingLast;
-    int savingRun = 0;
-    for (final d in days) {
-      if (d.savedAmount > 0) {
-        savingRun++;
-        if (savingRun > savingBest) savingBest = savingRun;
-        savingLast = d.date;
-      } else {
-        savingRun = 0;
-      }
-    }
-    if (savingRun > 0 && savingLast != null) {
-      final diff = today.difference(savingLast).inDays;
-      if (diff <= 1) savingCurrent = savingRun;
-    }
-
-    int loggingCurrent = 0;
-    int loggingBest = 0;
-    DateTime? loggingLast;
-    int loggingRun = 0;
-    for (final d in days) {
-      if (d.income > 0 || d.expenses > 0) {
-        loggingRun++;
-        if (loggingRun > loggingBest) loggingBest = loggingRun;
-        loggingLast = d.date;
-      } else {
-        loggingRun = 0;
-      }
-    }
-    if (loggingRun > 0 && loggingLast != null) {
-      final diff = today.difference(loggingLast).inDays;
-      if (diff <= 1) loggingCurrent = loggingRun;
-    }
-
-    int goalCurrent = 0;
-    int goalBest = 0;
-    DateTime? goalLast;
-    int goalRun = 0;
-    for (final d in days.reversed) {
-      final hasForDay = await _goalContributionOn(d.date);
-      if (hasForDay) {
-        goalRun++;
-        if (goalRun > goalBest) goalBest = goalRun;
-        goalLast = d.date;
-      } else {
-        goalRun = 0;
-      }
-    }
-    if (goalRun > 0 && goalLast != null) {
-      final diff = today.difference(goalLast).inDays;
-      if (diff <= 1) goalCurrent = goalRun;
-    }
-
-    await streaks.upsert(
-      StreakRecord(
-        id: StreakKind.saving.id,
-        currentCount: savingCurrent,
-        bestCount: math.max(savingBest, savingCurrent),
-        lastQualifiedDay: savingLast,
-      ),
+    final activity = ActivitySummary(
+      await tx.all(),
+      await goals.allContributions(),
     );
-    await streaks.upsert(
-      StreakRecord(
-        id: StreakKind.logging.id,
-        currentCount: loggingCurrent,
-        bestCount: math.max(loggingBest, loggingCurrent),
-        lastQualifiedDay: loggingLast,
-      ),
-    );
-    await streaks.upsert(
-      StreakRecord(
-        id: StreakKind.goal.id,
-        currentCount: goalCurrent,
-        bestCount: math.max(goalBest, goalCurrent),
-        lastQualifiedDay: goalLast,
-      ),
-    );
-  }
-
-  Future<bool> _goalContributionOn(DateTime day) async {
-    final start = DateTime(day.year, day.month, day.day);
-    final end = start.add(const Duration(days: 1));
-    final db = await (cache.db.database);
-    final result = await db.query(
-      'goal_contributions',
-      where: 'contributed_at >= ? AND contributed_at < ?',
-      whereArgs: [start.toIso8601String(), end.toIso8601String()],
-      limit: 1,
-    );
-    return result.isNotEmpty;
+    for (final streak in activity.streaks(DateTime.now())) {
+      await streaks.upsert(streak);
+    }
   }
 
   Future<void> _evaluateAchievements() async {

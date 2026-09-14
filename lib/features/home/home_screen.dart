@@ -1,3 +1,6 @@
+import 'package:go_router/go_router.dart';
+import '../../app/router.dart';
+import '../performance/widgets/activity_details.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -89,6 +92,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               sliver: SliverList(
                 delegate: SliverChildListDelegate.fixed([
+                  if (ref.watch(recurringIssueProvider) case final String issue)
+                    SectionCard(
+                      title: 'Scheduled transactions need attention',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(issue),
+                          TextButton(
+                            onPressed: () => context.go(Routes.recurring),
+                            child: const Text('Review recurring rules'),
+                          ),
+                        ],
+                      ),
+                    ),
                   const _Greeting(),
                   const SizedBox(height: 18),
                   const TotalSavingsCard(),
@@ -102,6 +119,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   const ActiveGoalsList(),
                   const SizedBox(height: 14),
                   const SmartInsightsList(),
+                  const SizedBox(height: 14),
+                  const FinancialActivityCard(),
                   const SizedBox(height: 14),
                   const StreaksSummaryRow(),
                 ]),
@@ -128,8 +147,7 @@ class _MenuButton extends StatelessWidget {
         child: const SizedBox(
           width: 40,
           height: 40,
-          child: Icon(Icons.menu_rounded,
-              color: AppColors.onSurface, size: 20),
+          child: Icon(Icons.menu_rounded, color: AppColors.onSurface, size: 20),
         ),
       ),
     );
@@ -155,14 +173,13 @@ class _BellButton extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              const Icon(Icons.notifications_none_rounded,
-                  color: AppColors.onSurface, size: 20),
+              const Icon(
+                Icons.notifications_none_rounded,
+                color: AppColors.onSurface,
+                size: 20,
+              ),
               if (hasDot)
-                const Positioned(
-                  top: 10,
-                  right: 10,
-                  child: _NotificationDot(),
-                ),
+                const Positioned(top: 10, right: 10, child: _NotificationDot()),
             ],
           ),
         ),
@@ -200,11 +217,11 @@ class _Greeting extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final name = ref.watch(settingsProvider).maybeWhen(
-          data: (s) => s.displayName,
-          orElse: () => 'there',
-        );
-    final display = (name.trim().isEmpty || name.trim().toLowerCase() == 'there')
+    final name = ref
+        .watch(settingsProvider)
+        .maybeWhen(data: (s) => s.displayName, orElse: () => 'there');
+    final display =
+        (name.trim().isEmpty || name.trim().toLowerCase() == 'there')
         ? 'there'
         : name.trim();
     return Padding(
@@ -266,7 +283,7 @@ class _MonthlyProgressCard extends ConsumerWidget {
                       Row(
                         children: [
                           const Text(
-                            'Monthly Progress',
+                            'Goal Savings',
                             style: TextStyle(
                               color: AppColors.onSurface,
                               fontSize: 15,
@@ -276,7 +293,9 @@ class _MonthlyProgressCard extends ConsumerWidget {
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 2),
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.surfaceContainerHigh,
                               borderRadius: BorderRadius.circular(10),
@@ -297,7 +316,7 @@ class _MonthlyProgressCard extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: _MiniStat(
-                              label: 'Saved',
+                              label: 'Contributed',
                               value: Money.format(s.monthlySaved),
                               color: AppColors.primary,
                             ),
@@ -306,7 +325,9 @@ class _MonthlyProgressCard extends ConsumerWidget {
                           Expanded(
                             child: _MiniStat(
                               label: 'Goal',
-                              value: Money.format(s.monthlyGoal),
+                              value: s.monthlyGoal > 0
+                                  ? Money.format(s.monthlyGoal)
+                                  : 'Not set',
                               color: AppColors.onSurfaceVariant,
                             ),
                           ),
@@ -439,8 +460,11 @@ class _ErrorCard extends StatelessWidget {
           const Icon(Icons.error_outline, color: AppColors.error),
           const SizedBox(width: 8),
           Expanded(
-              child: Text(message,
-                  style: const TextStyle(color: AppColors.onSurfaceVariant))),
+            child: Text(
+              message,
+              style: const TextStyle(color: AppColors.onSurfaceVariant),
+            ),
+          ),
         ],
       ),
     );

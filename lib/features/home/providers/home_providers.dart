@@ -153,7 +153,7 @@ class SmartInsightsRuleEngine {
             SmartInsight(
               id: 'streak_at_risk',
               message:
-                  "Don't break your $loggingStreak-day logging streak — log today's activity.",
+                  'Record any real activity today. No spending is needed to keep track.',
               icon: Icons.local_fire_department,
               color: const Color(0xFFEF4444),
             ),
@@ -252,14 +252,22 @@ final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
   final recentSaved = recentCache.fold<double>(0, (a, d) => a + d.savedAmount);
   final avgMonthlySavings = recentSaved / 3.0;
 
-  // Monthly numbers
-  final monthlyIncome = thisMonthCache.fold<double>(0, (a, d) => a + d.income);
-  final monthlyExpenses = thisMonthCache.fold<double>(
-    0,
-    (a, d) => a + d.expenses,
+  // Calendar and dashboard share actual records and local calendar dates.
+  final activity = await ref.watch(activityProvider.future);
+  final calendarNow = DateTime.now();
+  final monthActivity = activity.between(
+    DateTime(calendarNow.year, calendarNow.month),
+    DateTime(calendarNow.year, calendarNow.month + 1),
   );
-  final monthlySaved = monthlyIncome - monthlyExpenses;
-  final double monthlyGoal = avgMonthlySavings > 0 ? avgMonthlySavings : 5000;
+  // Monthly numbers
+  final monthlyIncome = monthActivity.income;
+  final monthlyExpenses = monthActivity.expenses;
+  final monthlySaved = monthActivity.saved;
+  final plannedSavings = goals.fold<double>(
+    0,
+    (sum, goal) => sum + (goal.monthlyTarget ?? 0),
+  );
+  final double monthlyGoal = plannedSavings;
 
   final savingsRate = monthlyIncome > 0
       ? ((monthlyIncome - monthlyExpenses) / monthlyIncome)

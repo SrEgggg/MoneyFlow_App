@@ -31,24 +31,69 @@ class RecurringRepo {
     return rows.map(RecurringTransactionRecord.fromRow).toList();
   }
 
+  void _validate(RecurringTransactionRecord r) {
+    if (r.name.trim().isEmpty ||
+        !r.amount.isFinite ||
+        r.amount <= 0 ||
+        r.amount > 999999999.99) {
+      throw ArgumentError(
+        'Enter a name and an amount from 0.01 to 999,999,999.99.',
+      );
+    }
+    if (r.intervalCount < 1 || r.intervalCount > 120) {
+      throw ArgumentError('Choose an interval from 1 to 120.');
+    }
+    if (!r.includes(r.startDate)) {
+      throw ArgumentError('End date cannot be before the start date.');
+    }
+  }
+
   Future<int> insert(RecurringTransactionRecord r) async {
-    logger?.info('Inserting recurring rule: ${r.name}');
+    _validate(r);
     final row = Map<String, Object?>.from(r.toRow())..remove('id');
+    // New rules always begin at their configured start, with no posted history.
+    row['next_run_at'] = r.startDate.toIso8601String();
+    row['last_run_at'] = null;
     return (await db.database).insert('recurring_transactions', row);
   }
 
   Future<void> update(RecurringTransactionRecord r) async {
-    logger?.info('Updating recurring rule ${r.id}: ${r.name}');
-    await (await db.database).update(
-      'recurring_transactions',
-      r.toRow(),
-      where: 'id = ?',
-      whereArgs: [r.id],
-    );
+    _validate(r);
+    await (await db.database).transaction((txn) async {
+      final rows = await txn.query(
+        'recurring_transactions',
+        where: 'id = ?',
+        whereArgs: [r.id],
+      );
+      if (rows.isEmpty) {
+        throw StateError('This recurring rule no longer exists.');
+      }
+      final current = RecurringTransactionRecord.fromRow(rows.single);
+      final changedCadence =
+          current.startDate != r.startDate ||
+          current.frequency != r.frequency ||
+          current.intervalCount != r.intervalCount;
+      final next = changedCadence
+          ? (current.lastRunAt == null
+                ? r.startDate
+                : r.firstAfter(current.lastRunAt!))
+          : current.nextRunAt;
+      final row = r.toRow();
+      // A stale edit must never rewind posting progress or repost old dates.
+      row['last_run_at'] = current.lastRunAt?.toIso8601String();
+      row['next_run_at'] = next.toIso8601String();
+      row['is_active'] = r.isActive && r.includes(next) ? 1 : 0;
+      row['updated_at'] = DateTime.now().toIso8601String();
+      await txn.update(
+        'recurring_transactions',
+        row,
+        where: 'id = ?',
+        whereArgs: [r.id],
+      );
+    });
   }
 
   Future<void> delete(int id) async {
-    logger?.info('Deleting recurring rule $id');
     await (await db.database).delete(
       'recurring_transactions',
       where: 'id = ?',
@@ -56,26 +101,76 @@ class RecurringRepo {
     );
   }
 
-  /// Persist the post-materialization `nextRunAt` / `lastRunAt`.
-  Future<void> advance(
-    int id,
-    DateTime nextRunAt, {
-    DateTime? lastRunAt,
-    bool? isActive,
+  /// Read due rules, post transactions, update balances and advance progress
+  /// under one SQLite transaction. Concurrent/retried runs read the committed
+  /// progress; any failure rolls the entire batch back.
+  Future<int> postDue(
+    TransactionRepo tx,
+    DateTime moment, {
+    int batchLimit = 1000,
   }) async {
-    logger?.info('Advancing recurring rule $id to $nextRunAt');
-    final values = <String, Object?>{
-      'next_run_at': nextRunAt.toIso8601String(),
-      'updated_at': DateTime.now().toIso8601String(),
-      if (lastRunAt != null) 'last_run_at': lastRunAt.toIso8601String(),
-      if (isActive != null) 'is_active': isActive ? 1 : 0,
-    };
-    await (await db.database).update(
-      'recurring_transactions',
-      values,
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    if (!identical(db, tx.db)) {
+      throw ArgumentError(
+        'Recurring rules and transactions must share a database.',
+      );
+    }
+    if (batchLimit < 1) throw ArgumentError('Batch limit must be positive.');
+    return (await db.database).transaction((txn) async {
+      final rows = await txn.query(
+        'recurring_transactions',
+        where: 'is_active = 1',
+        orderBy: 'next_run_at ASC',
+      );
+      var count = 0;
+      for (final row in rows) {
+        final rule = RecurringTransactionRecord.fromRow(row);
+        if (rule.nextRunAt.isAfter(moment)) continue;
+        _validate(rule);
+        var next = rule.nextRunAt;
+        var last = rule.lastRunAt;
+        // Watermark also protects legacy records with stale next_run_at.
+        if (last != null && !next.isAfter(last)) next = rule.firstAfter(last);
+        while (!next.isAfter(moment) &&
+            rule.includes(next) &&
+            count < batchLimit) {
+          await tx.insertInTransaction(
+            txn,
+            TxRecord(
+              amount: rule.amount,
+              type: rule.type,
+              category: rule.category,
+              account: rule.account,
+              occurredAt: next,
+              notes: rule.notes == null || rule.notes!.isEmpty
+                  ? 'Recurring: ${rule.name}'
+                  : '${rule.notes}\n(Recurring: ${rule.name})',
+              createdAt: moment,
+              updatedAt: moment,
+            ),
+          );
+          last = next;
+          final following = rule.computeNextAfter(next);
+          if (!following.isAfter(next)) {
+            throw StateError('Schedule must advance to a later date.');
+          }
+          next = following;
+          count++;
+        }
+        await txn.update(
+          'recurring_transactions',
+          {
+            'next_run_at': next.toIso8601String(),
+            'last_run_at': last?.toIso8601String(),
+            'is_active': rule.includes(next) ? 1 : 0,
+            'updated_at': moment.toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [rule.id],
+        );
+        if (count >= batchLimit) break;
+      }
+      return count;
+    });
   }
 }
 
@@ -124,52 +219,7 @@ class RecurringRunner {
   RecurringRunner({required this.recurring, required this.tx, this.logger});
 
   Future<int> materializeDue({DateTime? now}) async {
-    logger?.info('Materializing due recurring transactions...');
-    final moment = now ?? DateTime.now();
-    final due = await recurring.dueBy(moment);
-    var count = 0;
-    for (final rule in due) {
-      if (rule.id == null) continue;
-      logger?.info('Processing rule ${rule.id}: ${rule.name}');
-      if (rule.endDate != null && rule.endDate!.isBefore(moment)) {
-        await recurring.advance(
-          rule.id!,
-          rule.nextRunAt,
-          isActive: false,
-        );
-        continue;
-      }
-      final now = DateTime.now();
-      final occurredAt = rule.nextRunAt.isAfter(now)
-          ? now
-          : rule.nextRunAt;
-      await tx.insert(TxRecord(
-        amount: rule.amount,
-        type: rule.type,
-        category: rule.category,
-        account: rule.account,
-        occurredAt: occurredAt,
-        notes: rule.notes == null || rule.notes!.isEmpty
-            ? 'Recurring: ${rule.name}'
-            : '${rule.notes}\n(Recurring: ${rule.name})',
-        createdAt: now,
-        updatedAt: now,
-      ));
-      var next = rule.computeNextAfter(rule.nextRunAt);
-      var active = rule.isActive;
-      if (rule.endDate != null && next.isAfter(rule.endDate!)) {
-        // Final occurrence lands at endDate.
-        next = rule.endDate!;
-        active = false;
-      }
-      await recurring.advance(
-        rule.id!,
-        next,
-        lastRunAt: occurredAt,
-        isActive: active,
-      );
-      count++;
-    }
-    return count;
+    logger?.info('Posting due recurring transactions atomically.');
+    return recurring.postDue(tx, now ?? DateTime.now());
   }
 }

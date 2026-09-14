@@ -1,5 +1,7 @@
 import 'enums.dart';
 
+const _unchangedRecurringValue = Object();
+
 /// Per-category spending cap. A `monthKey` of null means the budget applies
 /// to whatever the current calendar month is (rolling). A value like
 /// `'2026-08'` pins it to that specific month.
@@ -21,22 +23,22 @@ class BudgetRecord {
   });
 
   Map<String, Object?> toRow() => {
-        if (id != null) 'id': id,
-        'category': category,
-        'amount': amount,
-        'month_key': monthKey,
-        'created_at': createdAt.toIso8601String(),
-        'updated_at': updatedAt.toIso8601String(),
-      };
+    if (id != null) 'id': id,
+    'category': category,
+    'amount': amount,
+    'month_key': monthKey,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
 
   factory BudgetRecord.fromRow(Map<String, Object?> r) => BudgetRecord(
-        id: r['id'] as int?,
-        category: r['category'] as String,
-        amount: (r['amount'] as num).toDouble(),
-        monthKey: r['month_key'] as String?,
-        createdAt: DateTime.parse(r['created_at'] as String),
-        updatedAt: DateTime.parse(r['updated_at'] as String),
-      );
+    id: r['id'] as int?,
+    category: r['category'] as String,
+    amount: (r['amount'] as num).toDouble(),
+    monthKey: r['month_key'] as String?,
+    createdAt: DateTime.parse(r['created_at'] as String),
+    updatedAt: DateTime.parse(r['updated_at'] as String),
+  );
 
   BudgetRecord copyWith({
     int? id,
@@ -44,15 +46,14 @@ class BudgetRecord {
     double? amount,
     String? monthKey,
     DateTime? updatedAt,
-  }) =>
-      BudgetRecord(
-        id: id ?? this.id,
-        category: category ?? this.category,
-        amount: amount ?? this.amount,
-        monthKey: monthKey ?? this.monthKey,
-        createdAt: createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => BudgetRecord(
+    id: id ?? this.id,
+    category: category ?? this.category,
+    amount: amount ?? this.amount,
+    monthKey: monthKey ?? this.monthKey,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 /// Frequency unit for a [RecurringTransactionRecord].
@@ -63,17 +64,14 @@ enum RecurringFrequency {
 
   String get id => name;
 
-  static RecurringFrequency fromId(String id) =>
-      RecurringFrequency.values.firstWhere(
-        (e) => e.id == id,
-        orElse: () => RecurringFrequency.monthly,
-      );
+  static RecurringFrequency fromId(String id) => RecurringFrequency.values
+      .firstWhere((e) => e.id == id, orElse: () => RecurringFrequency.monthly);
 
   String get label => switch (this) {
-        RecurringFrequency.daily => 'Daily',
-        RecurringFrequency.weekly => 'Weekly',
-        RecurringFrequency.monthly => 'Monthly',
-      };
+    RecurringFrequency.daily => 'Daily',
+    RecurringFrequency.weekly => 'Weekly',
+    RecurringFrequency.monthly => 'Monthly',
+  };
 }
 
 /// A rule that materializes a transaction on a cadence (salary, rent,
@@ -127,46 +125,143 @@ class RecurringTransactionRecord {
     return 'Every $n $unit';
   }
 
-  /// Advance [from] to the next run after the current [nextRunAt].
-  /// Honours [intervalCount] (every N units) and [endDate].
+  /// Advance one period, preserving local clock time and the original monthly
+  /// day (Jan 31 -> Feb 28 -> Mar 31). End dates are checked by the runner.
   DateTime computeNextAfter(DateTime from) {
+    if (intervalCount < 1 || intervalCount > 120) {
+      throw ArgumentError('Choose an interval from 1 to 120.');
+    }
+    DateTime at(int year, int month, int day) => from.isUtc
+        ? DateTime.utc(
+            year,
+            month,
+            day,
+            from.hour,
+            from.minute,
+            from.second,
+            from.millisecond,
+            from.microsecond,
+          )
+        : DateTime(
+            year,
+            month,
+            day,
+            from.hour,
+            from.minute,
+            from.second,
+            from.millisecond,
+            from.microsecond,
+          );
     switch (frequency) {
       case RecurringFrequency.daily:
-        return DateTime(from.year, from.month, from.day + intervalCount,
-            from.hour, from.minute);
+        return at(from.year, from.month, from.day + intervalCount);
       case RecurringFrequency.weekly:
-        return DateTime(from.year, from.month, from.day + 7 * intervalCount,
-            from.hour, from.minute);
+        return at(from.year, from.month, from.day + 7 * intervalCount);
       case RecurringFrequency.monthly:
-        // Clamp the day-of-month so Feb 30 → Feb 28/29 rather than overflowing
-        // into March.
-        final month = from.month + intervalCount;
-        final year = from.year + ((month - 1) ~/ 12);
-        final normalizedMonth = ((month - 1) % 12) + 1;
-        final lastDayOfTarget = DateTime(year, normalizedMonth + 1, 0).day;
-        final day = from.day <= lastDayOfTarget ? from.day : lastDayOfTarget;
-        return DateTime(year, normalizedMonth, day, from.hour, from.minute);
+        final target = at(from.year, from.month + intervalCount, 1);
+        final lastDay = at(target.year, target.month + 1, 0).day;
+        final day = startDate.day <= lastDay ? startDate.day : lastDay;
+        return at(target.year, target.month, day);
     }
   }
 
+  /// First occurrence on this cadence strictly after a posted instant.
+  DateTime firstAfter(DateTime posted) {
+    if (startDate.isAfter(posted)) return startDate;
+    final start = startDate;
+    final end = startDate.isUtc ? posted.toUtc() : posted.toLocal();
+    final elapsedDays = DateTime.utc(
+      end.year,
+      end.month,
+      end.day,
+    ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
+    final periods = switch (frequency) {
+      RecurringFrequency.daily => elapsedDays ~/ intervalCount,
+      RecurringFrequency.weekly => elapsedDays ~/ (7 * intervalCount),
+      RecurringFrequency.monthly =>
+        ((end.year - start.year) * 12 + end.month - start.month) ~/
+            intervalCount,
+    };
+    // Jump close to the answer rather than iterating over years of history.
+    final units = periods < 0 ? 0 : periods;
+    DateTime candidate;
+    if (units == 0) {
+      candidate = startDate;
+    } else {
+      // The jump is arithmetic, not a user cadence; use the normal cadence
+      // below to preserve bounds and monthly anchoring.
+      final days = frequency == RecurringFrequency.weekly
+          ? 7 * units * intervalCount
+          : units * intervalCount;
+      final base = startDate;
+      DateTime at(int y, int m, int d) => base.isUtc
+          ? DateTime.utc(
+              y,
+              m,
+              d,
+              base.hour,
+              base.minute,
+              base.second,
+              base.millisecond,
+              base.microsecond,
+            )
+          : DateTime(
+              y,
+              m,
+              d,
+              base.hour,
+              base.minute,
+              base.second,
+              base.millisecond,
+              base.microsecond,
+            );
+      if (frequency == RecurringFrequency.monthly) {
+        final month = at(base.year, base.month + units * intervalCount, 1);
+        final lastDay = at(month.year, month.month + 1, 0).day;
+        candidate = at(
+          month.year,
+          month.month,
+          base.day <= lastDay ? base.day : lastDay,
+        );
+      } else {
+        candidate = at(base.year, base.month, base.day + days);
+      }
+    }
+    while (!candidate.isAfter(posted)) {
+      candidate = computeNextAfter(candidate);
+    }
+    return candidate;
+  }
+
+  bool includes(DateTime occurrence) {
+    if (endDate == null) return true;
+    final end = endDate!.toLocal();
+    final day = occurrence.toLocal();
+    return !DateTime(
+      day.year,
+      day.month,
+      day.day,
+    ).isAfter(DateTime(end.year, end.month, end.day));
+  }
+
   Map<String, Object?> toRow() => {
-        if (id != null) 'id': id,
-        'name': name,
-        'amount': amount,
-        'type': type.id,
-        'category': category,
-        'account': account,
-        'frequency': frequency.id,
-        'interval_count': intervalCount,
-        'start_date': startDate.toIso8601String(),
-        'end_date': endDate?.toIso8601String(),
-        'next_run_at': nextRunAt.toIso8601String(),
-        'last_run_at': lastRunAt?.toIso8601String(),
-        'is_active': isActive ? 1 : 0,
-        'notes': notes,
-        'created_at': createdAt.toIso8601String(),
-        'updated_at': updatedAt.toIso8601String(),
-      };
+    if (id != null) 'id': id,
+    'name': name,
+    'amount': amount,
+    'type': type.id,
+    'category': category,
+    'account': account,
+    'frequency': frequency.id,
+    'interval_count': intervalCount,
+    'start_date': startDate.toIso8601String(),
+    'end_date': endDate?.toIso8601String(),
+    'next_run_at': nextRunAt.toIso8601String(),
+    'last_run_at': lastRunAt?.toIso8601String(),
+    'is_active': isActive ? 1 : 0,
+    'notes': notes,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
 
   factory RecurringTransactionRecord.fromRow(Map<String, Object?> r) =>
       RecurringTransactionRecord(
@@ -202,29 +297,32 @@ class RecurringTransactionRecord {
     RecurringFrequency? frequency,
     int? intervalCount,
     DateTime? startDate,
-    DateTime? endDate,
+    Object? endDate = _unchangedRecurringValue,
     DateTime? nextRunAt,
     DateTime? lastRunAt,
     bool? isActive,
-    String? notes,
+    Object? notes = _unchangedRecurringValue,
     DateTime? updatedAt,
-  }) =>
-      RecurringTransactionRecord(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        amount: amount ?? this.amount,
-        type: type ?? this.type,
-        category: category ?? this.category,
-        account: account ?? this.account,
-        frequency: frequency ?? this.frequency,
-        intervalCount: intervalCount ?? this.intervalCount,
-        startDate: startDate ?? this.startDate,
-        endDate: endDate ?? this.endDate,
-        nextRunAt: nextRunAt ?? this.nextRunAt,
-        lastRunAt: lastRunAt ?? this.lastRunAt,
-        isActive: isActive ?? this.isActive,
-        notes: notes ?? this.notes,
-        createdAt: createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => RecurringTransactionRecord(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    amount: amount ?? this.amount,
+    type: type ?? this.type,
+    category: category ?? this.category,
+    account: account ?? this.account,
+    frequency: frequency ?? this.frequency,
+    intervalCount: intervalCount ?? this.intervalCount,
+    startDate: startDate ?? this.startDate,
+    endDate: identical(endDate, _unchangedRecurringValue)
+        ? this.endDate
+        : endDate as DateTime?,
+    nextRunAt: nextRunAt ?? this.nextRunAt,
+    lastRunAt: lastRunAt ?? this.lastRunAt,
+    isActive: isActive ?? this.isActive,
+    notes: identical(notes, _unchangedRecurringValue)
+        ? this.notes
+        : notes as String?,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }

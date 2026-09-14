@@ -19,11 +19,13 @@ import '../../../providers.dart';
 class QuickAddForm extends ConsumerStatefulWidget {
   final List<AccountRecord> accounts;
   final VoidCallback onSaved;
+  final DateTime? initialDate;
 
   const QuickAddForm({
     super.key,
     required this.accounts,
     required this.onSaved,
+    this.initialDate,
   });
 
   @override
@@ -43,6 +45,7 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
   @override
   void initState() {
     super.initState();
+    _date = widget.initialDate ?? DateTime.now();
     // Default account = first one
     if (widget.accounts.isNotEmpty) {
       _accountId = widget.accounts.first.name;
@@ -74,9 +77,13 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final amount = double.tryParse(_amountCtrl.text.trim());
-    if (amount == null || !amount.isFinite || amount <= 0) {
-      _showError('Enter a valid amount');
+    if (amount == null ||
+        !amount.isFinite ||
+        amount <= 0 ||
+        amount > 999999999.99) {
+      _showError('Enter an amount from ₱0.01 to ₱999,999,999.99.');
       return;
     }
     if (_categoryId == null) {
@@ -113,8 +120,9 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
         _date = DateTime.now();
       });
       _amountFocus.requestFocus();
+      final messenger = ScaffoldMessenger.of(context);
       widget.onSaved();
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
             '${_type == TxType.income ? 'Income' : 'Expense'} saved: ${Money.compact(amount)}',
@@ -124,6 +132,7 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
         ),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() => _saving = false);
       _showError('Could not save: $e');
     }

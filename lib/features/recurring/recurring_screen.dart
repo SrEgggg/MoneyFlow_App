@@ -58,7 +58,9 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
     WidgetRef ref,
     RecurringTransactionRecord? existing,
   ) async {
-    final accounts = ref.read(accountsProvider).maybeWhen<List<AccountRecord>>(
+    final accounts = ref
+        .read(accountsProvider)
+        .maybeWhen<List<AccountRecord>>(
           data: (a) => a,
           orElse: () => const <AccountRecord>[],
         );
@@ -85,16 +87,21 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
   }
 
   Future<void> _runAll() async {
+    if (_running) return;
     setState(() => _running = true);
     try {
-      final count =
-          await ref.read(recurringRunnerProvider).materializeDue();
-      await ref.read(recalcServiceProvider).recomputeAll(cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour);
+      final count = await ref.read(recurringRunnerProvider).materializeDue();
+      ref.read(recurringIssueProvider.notifier).state = null;
       ref.invalidate(transactionsProvider);
       ref.invalidate(accountsProvider);
       ref.invalidate(recurringProvider);
       ref.invalidate(streaksProvider);
       ref.invalidate(earnedAchievementsProvider);
+      await ref
+          .read(recalcServiceProvider)
+          .recomputeAll(
+            cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour,
+          );
       ref.invalidate(dailyCacheForMonthProvider);
       ref.invalidate(dailyCacheForDayProvider);
       if (!mounted) return;
@@ -104,18 +111,22 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
           content: Text(
             count == 0
                 ? 'Nothing to run right now.'
-                : 'Posted $count ${count == 1 ? "transaction" : "transactions"}.',
+                : 'Posted $count ${count == 1 ? "transaction" : "transactions"}.${count >= 1000 ? " Run again to check remaining overdue dates." : ""}',
             style: const TextStyle(color: AppColors.onSurface),
           ),
         ),
       );
     } catch (e) {
+      ref.read(recurringIssueProvider.notifier).state =
+          'Could not finish scheduled posting. Review the rules and retry.';
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: AppColors.error,
-          content: Text('Run failed: $e',
-              style: const TextStyle(color: AppColors.onPrimary)),
+          content: Text(
+            'Run failed: $e',
+            style: const TextStyle(color: AppColors.onPrimary),
+          ),
         ),
       );
     } finally {
@@ -184,10 +195,15 @@ class _RunAllCard extends StatelessWidget {
                     ? const Padding(
                         padding: EdgeInsets.all(9),
                         child: CircularProgressIndicator(
-                            strokeWidth: 2.4, color: AppColors.primary),
+                          strokeWidth: 2.4,
+                          color: AppColors.primary,
+                        ),
                       )
-                    : const Icon(Icons.play_arrow_rounded,
-                        color: AppColors.primary, size: 20),
+                    : const Icon(
+                        Icons.play_arrow_rounded,
+                        color: AppColors.primary,
+                        size: 20,
+                      ),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -204,15 +220,20 @@ class _RunAllCard extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Posts any transaction whose next run time has passed.',
+                      'Posts overdue dates through today, up to 1,000 per run.',
                       style: TextStyle(
-                          color: AppColors.onSurfaceVariant, fontSize: 11),
+                        color: AppColors.onSurfaceVariant,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right,
-                  color: AppColors.onSurfaceVariant, size: 20),
+              const Icon(
+                Icons.chevron_right,
+                color: AppColors.onSurfaceVariant,
+                size: 20,
+              ),
             ],
           ),
         ),
@@ -229,8 +250,9 @@ class _RecurringTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final active = rule.isActive;
-    final typeColor =
-        rule.type == TxType.income ? AppColors.primary : AppColors.error;
+    final typeColor = rule.type == TxType.income
+        ? AppColors.primary
+        : AppColors.error;
     final lastRun = rule.lastRunAt;
     return Material(
       color: AppColors.surfaceContainer,
@@ -301,7 +323,9 @@ class _RecurringTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: active
                               ? AppColors.primary.withValues(alpha: 0.18)
@@ -327,15 +351,20 @@ class _RecurringTile extends StatelessWidget {
               const SizedBox(height: 10),
               Container(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 8),
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.surfaceContainerHigh,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.schedule,
-                        size: 13, color: AppColors.onSurfaceVariant),
+                    const Icon(
+                      Icons.schedule,
+                      size: 13,
+                      color: AppColors.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
@@ -386,8 +415,11 @@ class _EmptyState extends StatelessWidget {
                 color: AppColors.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.autorenew_rounded,
-                  color: Color(0xFF8B5CF6), size: 30),
+              child: const Icon(
+                Icons.autorenew_rounded,
+                color: Color(0xFF8B5CF6),
+                size: 30,
+              ),
             ),
             const SizedBox(height: 16),
             const Text(

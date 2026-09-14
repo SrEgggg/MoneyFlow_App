@@ -10,7 +10,8 @@ import '../../providers.dart';
 
 /// Form to create a new savings goal.
 class CreateGoalScreen extends ConsumerStatefulWidget {
-  const CreateGoalScreen({super.key});
+  final GoalRecord? goal;
+  const CreateGoalScreen({super.key, this.goal});
 
   @override
   ConsumerState<CreateGoalScreen> createState() => _CreateGoalScreenState();
@@ -25,6 +26,19 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
   bool _saving = false;
 
   @override
+  void initState() {
+    super.initState();
+    final goal = widget.goal;
+    if (goal != null) {
+      _nameCtrl.text = goal.name;
+      _targetCtrl.text = goal.targetAmount.toStringAsFixed(2);
+      _monthlyCtrl.text = goal.monthlyTarget?.toStringAsFixed(2) ?? '';
+      _kind = goal.kind;
+      _targetDate = goal.targetDate;
+    }
+  }
+
+  @override
   void dispose() {
     _nameCtrl.dispose();
     _targetCtrl.dispose();
@@ -33,38 +47,71 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final name = _nameCtrl.text.trim();
     final target = double.tryParse(_targetCtrl.text.trim());
     if (name.isEmpty) {
       _err('Enter a goal name');
       return;
     }
-    if (target == null || target <= 0) {
+    if (target == null ||
+        !target.isFinite ||
+        target <= 0 ||
+        target > 999999999.99) {
       _err('Enter a valid target amount');
       return;
     }
     final monthly = double.tryParse(_monthlyCtrl.text.trim());
+    if (_monthlyCtrl.text.trim().isNotEmpty &&
+        (monthly == null ||
+            !monthly.isFinite ||
+            monthly <= 0 ||
+            monthly > 999999999.99)) {
+      _err('Enter a positive monthly target, or leave it empty.');
+      return;
+    }
+    final saved = widget.goal?.currentAmount ?? 0;
+    if (target < saved) {
+      _err('Target cannot be less than the amount already saved.');
+      return;
+    }
     setState(() => _saving = true);
     final goal = GoalRecord(
+      id: widget.goal?.id,
       name: name,
       kind: _kind,
       icon: _kind.id,
       targetAmount: target,
-      currentAmount: 0,
+      currentAmount: saved,
       monthlyTarget: monthly,
-      startedAt: DateTime.now(),
+      startedAt: widget.goal?.startedAt ?? DateTime.now(),
       targetDate: _targetDate,
-      status: GoalStatus.active,
-      sortOrder: DateTime.now().millisecondsSinceEpoch,
+      status: saved >= target ? GoalStatus.completed : GoalStatus.active,
+      completedAt: saved >= target
+          ? widget.goal?.completedAt ?? DateTime.now()
+          : null,
+      sortOrder:
+          widget.goal?.sortOrder ?? DateTime.now().millisecondsSinceEpoch,
     );
     try {
-      await ref.read(goalsProvider.notifier).add(goal);
+      if (widget.goal == null) {
+        await ref.read(goalsProvider.notifier).add(goal);
+      } else {
+        await ref.read(goalsProvider.notifier).edit(goal);
+      }
       if (!mounted) return;
       context.pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Goal created')),
+        SnackBar(
+          content: Text(
+            widget.goal == null
+                ? 'Goal successfully created.'
+                : 'Goal updated successfully.',
+          ),
+        ),
       );
     } catch (e) {
+      if (!mounted) return;
       setState(() => _saving = false);
       _err('Could not save: $e');
     }
@@ -79,7 +126,9 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('New Goal')),
+      appBar: AppBar(
+        title: Text(widget.goal == null ? 'New Goal' : 'Edit Goal'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -145,7 +194,8 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
               final picked = await showDatePicker(
                 context: context,
                 initialDate:
-                    _targetDate ?? DateTime.now().add(const Duration(days: 180)),
+                    _targetDate ??
+                    DateTime.now().add(const Duration(days: 180)),
                 firstDate: DateTime.now(),
                 lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
                 builder: (context, child) => Theme(
@@ -164,16 +214,18 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
                 color: AppColors.surfaceContainerHigh,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.calendar_today,
-                      size: 18, color: AppColors.onSurfaceVariant),
+                  const Icon(
+                    Icons.calendar_today,
+                    size: 18,
+                    color: AppColors.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
@@ -189,8 +241,11 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
                   if (_targetDate != null)
                     GestureDetector(
                       onTap: () => setState(() => _targetDate = null),
-                      child: const Icon(Icons.close,
-                          color: AppColors.onSurfaceVariant, size: 18),
+                      child: const Icon(
+                        Icons.close,
+                        color: AppColors.onSurfaceVariant,
+                        size: 18,
+                      ),
                     ),
                 ],
               ),
@@ -199,7 +254,13 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
           const SizedBox(height: 32),
           FilledButton(
             onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Create Goal'),
+            child: Text(
+              _saving
+                  ? 'Saving…'
+                  : widget.goal == null
+                  ? 'Create Goal'
+                  : 'Save Changes',
+            ),
           ),
         ],
       ),
@@ -212,14 +273,14 @@ class _Label extends StatelessWidget {
   const _Label({required this.text});
   @override
   Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          color: AppColors.onSurfaceVariant,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.4,
-        ),
-      );
+    text,
+    style: const TextStyle(
+      color: AppColors.onSurfaceVariant,
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.4,
+    ),
+  );
 }
 
 class _KindChip extends StatelessWidget {
@@ -252,9 +313,11 @@ class _KindChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(kind.icon,
-                size: 16,
-                color: active ? kind.color : AppColors.onSurfaceVariant),
+            Icon(
+              kind.icon,
+              size: 16,
+              color: active ? kind.color : AppColors.onSurfaceVariant,
+            ),
             const SizedBox(width: 6),
             Text(
               kind.label,
