@@ -1,6 +1,6 @@
+import 'app_ui.dart';
 import 'package:flutter/material.dart';
 
-import '../../app/theme.dart';
 import 'status_dot.dart';
 
 /// Reusable card surface with optional title row. Premium dark card with
@@ -16,6 +16,7 @@ class SectionCard extends StatelessWidget {
   final VoidCallback? onTap;
   final IconData? titleIcon;
   final Color? titleIconColor;
+  final bool framed;
 
   const SectionCard({
     super.key,
@@ -23,26 +24,32 @@ class SectionCard extends StatelessWidget {
     this.subtitle,
     this.trailing,
     required this.child,
-    this.padding = const EdgeInsets.fromLTRB(18, 16, 18, 18),
+    this.padding = const EdgeInsets.all(AppSpace.md),
     this.margin = EdgeInsets.zero,
     this.background,
     this.onTap,
     this.titleIcon,
     this.titleIconColor,
+    this.framed = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final card = Container(
-      decoration: BoxDecoration(
-        color: background ?? AppColors.surfaceContainer,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.04),
-          width: 1,
-        ),
-      ),
-      padding: padding,
+      decoration: framed
+          ? BoxDecoration(
+              color:
+                  background ?? Theme.of(context).colorScheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              border: Border.all(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.35),
+                width: 1,
+              ),
+            )
+          : null,
+      padding: framed ? padding : EdgeInsets.zero,
       margin: margin,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,17 +63,21 @@ class SectionCard extends StatelessWidget {
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
-                      color: (titleIconColor ?? AppColors.primary)
-                          .withValues(alpha: 0.18),
+                      color:
+                          (titleIconColor ??
+                                  Theme.of(context).colorScheme.primary)
+                              .withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
                       titleIcon,
-                      color: titleIconColor ?? AppColors.primary,
+                      color:
+                          titleIconColor ??
+                          Theme.of(context).colorScheme.primary,
                       size: 15,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: AppSpace.sm),
                 ],
                 Expanded(
                   child: Column(
@@ -74,20 +85,17 @@ class SectionCard extends StatelessWidget {
                     children: [
                       Text(
                         title!,
-                        style: const TextStyle(
-                          color: AppColors.onSurface,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.2,
-                        ),
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
                       if (subtitle != null) ...[
                         const SizedBox(height: 2),
                         Text(
                           subtitle!,
-                          style: const TextStyle(
-                            color: AppColors.onSurfaceVariant,
-                            fontSize: 11,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                            fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -98,7 +106,7 @@ class SectionCard extends StatelessWidget {
                 if (trailing != null) trailing!,
               ],
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: AppSpace.xs),
           ],
           child,
         ],
@@ -108,7 +116,7 @@ class SectionCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppRadius.card),
         onTap: onTap,
         child: card,
       ),
@@ -142,20 +150,24 @@ class StatTile extends StatelessWidget {
       children: [
         Text(
           value,
-          style: valueStyle ??
-              const TextStyle(
-                color: AppColors.onSurface,
+          style:
+              valueStyle ??
+              TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-              ).copyWith(color: valueColor ?? AppColors.onSurface),
+              ).copyWith(
+                color: valueColor ?? Theme.of(context).colorScheme.onSurface,
+              ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: labelStyle ??
-              const TextStyle(
-                color: AppColors.onSurfaceVariant,
-                fontSize: 11,
+          style:
+              labelStyle ??
+              TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
         ),
@@ -186,11 +198,13 @@ class DayStatusLegend extends StatelessWidget {
             children: [
               StatusDot(status: e.$1, size: 10),
               const SizedBox(width: 6),
-              Text(e.$2,
-                  style: const TextStyle(
-                    color: AppColors.onSurfaceVariant,
-                    fontSize: 11,
-                  )),
+              Text(
+                e.$2,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 13,
+                ),
+              ),
             ],
           ),
       ],

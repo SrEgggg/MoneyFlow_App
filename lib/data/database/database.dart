@@ -4,8 +4,8 @@ import 'package:sqflite/sqflite.dart';
 
 /// Single SQLite database for MoneyFlow.
 ///
-/// Schema mirrors the spec's tables. All dates stored as ISO-8601 strings in
-/// UTC; financial-day logic happens at calc time.
+/// Dates are stored as ISO-8601 strings. Financial-day calculations apply
+/// the configured cutoff separately from calendar-date summaries.
 ///
 /// Schema versions:
 ///   v1: original schema (accounts, transactions, goals, journal, etc.)
@@ -20,7 +20,10 @@ class AppDatabase {
 
   /// Bump this whenever the schema changes. Each bump MUST add an entry to
   /// [_onUpgrade] below.
-  static const int currentVersion = 2;
+  Future<void> upgradeForTesting(int oldVersion) async =>
+      _onUpgrade(await database, oldVersion, currentVersion);
+
+  static const int currentVersion = 7;
 
   Database? _db;
 
@@ -53,7 +56,8 @@ class AppDatabase {
         id INTEGER PRIMARY KEY,
         display_name TEXT NOT NULL,
         cutoff_hour INTEGER NOT NULL DEFAULT 3,
-        currency TEXT NOT NULL DEFAULT 'PHP'
+        currency TEXT NOT NULL DEFAULT 'PHP',
+        theme_mode TEXT NOT NULL DEFAULT 'system'
       )
     ''');
 
@@ -77,6 +81,7 @@ class AppDatabase {
         type TEXT NOT NULL,
         category TEXT NOT NULL,
         account TEXT NOT NULL,
+        destination_account TEXT,
         occurred_at TEXT NOT NULL,
         notes TEXT,
         tags TEXT,
@@ -104,7 +109,8 @@ class AppDatabase {
         target_date TEXT,
         status TEXT NOT NULL,
         completed_at TEXT,
-        sort_order INTEGER NOT NULL DEFAULT 0
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        photo TEXT
       )
     ''');
 
@@ -157,7 +163,8 @@ class AppDatabase {
         name TEXT NOT NULL,
         description TEXT NOT NULL,
         icon_code INTEGER NOT NULL,
-        color_value INTEGER NOT NULL
+        color_value INTEGER NOT NULL,
+ is_archived INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -236,7 +243,9 @@ class AppDatabase {
       'CREATE INDEX idx_recurring_next_run ON recurring_transactions(next_run_at)',
     );
 
+    batch.execute(customCategoriesSchema);
     await batch.commit(noResult: true);
+    await _accountNameGuards(db);
   }
 
   /// Migrate an older database forward to [currentVersion]. Always
@@ -290,7 +299,57 @@ class AppDatabase {
       );
     }
 
+    if (oldVersion < 3) {
+      await db.execute(
+        "ALTER TABLE settings ADD COLUMN theme_mode TEXT NOT NULL DEFAULT 'system'",
+      );
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN destination_account TEXT',
+      );
+    }
+    if (oldVersion < 4) {
+      await db.execute(customCategoriesSchema);
+    }
+    if (oldVersion == 4) {
+      await db.execute(
+        'ALTER TABLE custom_categories ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+    if (oldVersion < 6) {
+      final columns = await db.rawQuery('PRAGMA table_info(goals)');
+      if (columns.isNotEmpty && !columns.any((c) => c['name'] == 'photo')) {
+        await db.execute('ALTER TABLE goals ADD COLUMN photo TEXT');
+      }
+    }
+    if (oldVersion < 7) {
+      await _accountNameGuards(db);
+      final goals = await db.rawQuery('PRAGMA table_info(goals)');
+      if (goals.isNotEmpty) {
+        // Correct binary floating-point residue only, not intentional legacy
+        // sub-cent values. No records or contributions are removed.
+        await db.execute(
+          'UPDATE goals SET current_amount = ROUND(current_amount, 2) WHERE ABS(current_amount - ROUND(current_amount, 2)) < 0.0000001',
+        );
+        await db.execute(
+          "UPDATE goals SET status = 'completed' WHERE current_amount >= target_amount AND target_amount > 0 AND status != 'archived'",
+        );
+      }
+    }
     // Future versions: `if (oldVersion < 3) { ... }`
+  }
+
+  Future<void> _accountNameGuards(Database db) async {
+    if ((await db.rawQuery('PRAGMA table_info(accounts)')).isEmpty) return;
+    // Triggers preserve legacy duplicates for explicit user reconciliation.
+    // Unlike building a unique index, installing these never drops/merges data.
+    await db.execute('''CREATE TRIGGER IF NOT EXISTS account_unique_insert
+      BEFORE INSERT ON accounts WHEN EXISTS
+      (SELECT 1 FROM accounts WHERE lower(trim(name)) = lower(trim(NEW.name)))
+      BEGIN SELECT RAISE(ABORT, 'Account names must be unique'); END''');
+    await db.execute('''CREATE TRIGGER IF NOT EXISTS account_unique_rename
+      BEFORE UPDATE OF name ON accounts WHEN NEW.name != OLD.name AND EXISTS
+      (SELECT 1 FROM accounts WHERE id != OLD.id AND lower(trim(name)) = lower(trim(NEW.name)))
+      BEGIN SELECT RAISE(ABORT, 'Account names must be unique'); END''');
   }
 
   /// Wipe all data tables (for "Reset demo data" button). User-data tables
@@ -299,6 +358,7 @@ class AppDatabase {
     final db = await database;
     await db.transaction((txn) async {
       final tables = [
+        'custom_categories',
         'recurring_transactions',
         'budgets',
         'transaction_revisions',
@@ -317,7 +377,12 @@ class AppDatabase {
       for (final t in tables) {
         await txn.delete(t);
       }
-      await txn.insert('settings', {'id': 1, 'display_name': 'there', 'cutoff_hour': 3, 'currency': 'PHP'});
+      await txn.insert('settings', {
+        'id': 1,
+        'display_name': 'there',
+        'cutoff_hour': 3,
+        'currency': 'PHP',
+      });
     });
   }
 
@@ -326,3 +391,15 @@ class AppDatabase {
     _db = null;
   }
 }
+
+const customCategoriesSchema = '''
+CREATE TABLE IF NOT EXISTS custom_categories (
+ id TEXT PRIMARY KEY,
+ name TEXT NOT NULL,
+ normalized_name TEXT NOT NULL UNIQUE,
+ kind TEXT NOT NULL CHECK(kind IN ('income', 'expense')),
+ icon_key TEXT NOT NULL,
+ color_value INTEGER NOT NULL,
+ is_archived INTEGER NOT NULL DEFAULT 0
+)
+''';

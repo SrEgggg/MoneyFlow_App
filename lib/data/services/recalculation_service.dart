@@ -28,7 +28,11 @@ class RecalculationService {
   });
 
   /// Full recompute from [from] to today (inclusive).
-  Future<void> recomputeFrom(DateTime from, {int cutoffHour = 3}) async {
+  Future<void> recomputeFrom(
+    DateTime from, {
+    int cutoffHour = 3,
+    bool replaceAll = false,
+  }) async {
     final today = FinancialDay.today(cutoffHour: cutoffHour);
     final padStart = from.subtract(const Duration(hours: 6));
     final padEnd = DateTime.now();
@@ -42,18 +46,12 @@ class RecalculationService {
       final bucket = byDay.putIfAbsent(k, () => _DayBucket(k));
       if (t.type == TxType.income) {
         bucket.income += t.amount;
-      } else {
+      } else if (t.type == TxType.expense) {
         bucket.expenses += t.amount;
       }
     }
 
-    await (await cache.db.database).delete(
-      'daily_performance_cache',
-      where: 'date >= ?',
-      whereArgs: [
-        FinancialDay.key(from, cutoffHour: cutoffHour).toIso8601String(),
-      ],
-    );
+    final updates = <DailyPerformance>[];
     final allowance = await _computeAllowance(cutoffHour: cutoffHour);
 
     for (final entry in byDay.entries) {
@@ -65,7 +63,7 @@ class RecalculationService {
         expenses: b.expenses,
         allowance: allowance,
       );
-      await cache.upsert(
+      updates.add(
         DailyPerformance(
           date: DateTime(k.year, k.month, k.day),
           income: b.income,
@@ -78,6 +76,26 @@ class RecalculationService {
       );
     }
 
+    await (await cache.db.database).transaction((txn) async {
+      await txn.delete(
+        'daily_performance_cache',
+        where: replaceAll ? null : 'date >= ?',
+        whereArgs: replaceAll
+            ? null
+            : [
+                FinancialDay.key(
+                  from,
+                  cutoffHour: cutoffHour,
+                ).toIso8601String(),
+              ],
+      );
+      final batch = txn.batch();
+      for (final day in updates) {
+        batch.insert('daily_performance_cache', day.toRow());
+      }
+      await batch.commit(noResult: true);
+    });
+
     await _updateStreaks(cutoffHour: cutoffHour);
     await _evaluateAchievements();
   }
@@ -88,8 +106,7 @@ class RecalculationService {
     final earliest = all.isEmpty
         ? today
         : all.map((t) => t.occurredAt).reduce((a, b) => a.isBefore(b) ? a : b);
-    await (await cache.db.database).delete('daily_performance_cache');
-    await recomputeFrom(earliest, cutoffHour: cutoffHour);
+    await recomputeFrom(earliest, cutoffHour: cutoffHour, replaceAll: true);
   }
 
   Future<double> _computeAllowance({int cutoffHour = 3}) async {

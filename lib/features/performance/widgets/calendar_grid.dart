@@ -47,13 +47,15 @@ class CalendarGrid extends StatelessWidget {
       final perf = byDate[key];
       final status = DayStatus.fromId(perf?.status);
       final isToday = _k(date) == _k(today);
-      cells.add(_DayCell(
-        day: day,
-        status: status,
-        amount: perf?.savedAmount ?? 0,
-        isToday: isToday,
-        onTap: () => context.push(Routes.performanceDay(date)),
-      ));
+      cells.add(
+        _DayCell(
+          day: day,
+          status: status,
+          amount: perf?.savedAmount ?? 0,
+          isToday: isToday,
+          onTap: () => context.push(Routes.performanceDay(date)),
+        ),
+      );
     }
 
     return GridView.count(
@@ -76,8 +78,8 @@ class _HeaderCell extends StatelessWidget {
     return Center(
       child: Text(
         text,
-        style: const TextStyle(
-          color: AppColors.onSurfaceVariant,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
@@ -114,17 +116,20 @@ class _DayCell extends StatelessWidget {
               aspectRatio: 1,
               child: Container(
                 decoration: BoxDecoration(
-                  color: _bgFor(status),
+                  color: _bgFor(context, status),
                   borderRadius: BorderRadius.circular(8),
                   border: isToday
-                      ? Border.all(color: AppColors.primary, width: 1.5)
+                      ? Border.all(
+                          color: Theme.of(context).colorScheme.primary,
+                          width: 1.5,
+                        )
                       : null,
                 ),
                 child: Center(
                   child: Text(
                     '$day',
                     style: TextStyle(
-                      color: _fgFor(status),
+                      color: _fgFor(context, status),
                       fontSize: 13,
                       fontWeight: isToday ? FontWeight.w700 : FontWeight.w600,
                     ),
@@ -147,16 +152,16 @@ class _DayCell extends StatelessWidget {
     );
   }
 
-  Color _bgFor(DayStatus s) => switch (s) {
-        DayStatus.darkGreen => AppColors.dayDarkGreen.withValues(alpha: 0.85),
-        DayStatus.green => AppColors.dayGreen.withValues(alpha: 0.85),
-        DayStatus.yellow => AppColors.dayYellow.withValues(alpha: 0.85),
-        DayStatus.red => AppColors.dayRed.withValues(alpha: 0.85),
-        DayStatus.darkRed => AppColors.dayDarkRed.withValues(alpha: 0.85),
-        DayStatus.none => AppColors.surfaceContainerHigh,
-      };
+  Color _bgFor(BuildContext context, DayStatus s) => switch (s) {
+    DayStatus.darkGreen => AppColors.dayDarkGreen.withValues(alpha: 0.85),
+    DayStatus.green => AppColors.dayGreen.withValues(alpha: 0.85),
+    DayStatus.yellow => AppColors.dayYellow.withValues(alpha: 0.85),
+    DayStatus.red => AppColors.dayRed.withValues(alpha: 0.85),
+    DayStatus.darkRed => AppColors.dayDarkRed.withValues(alpha: 0.85),
+    DayStatus.none => Theme.of(context).colorScheme.surfaceContainerHighest,
+  };
 
-  Color _fgFor(DayStatus s) {
+  Color _fgFor(BuildContext context, DayStatus s) {
     switch (s) {
       case DayStatus.darkGreen:
       case DayStatus.green:
@@ -165,7 +170,7 @@ class _DayCell extends StatelessWidget {
       case DayStatus.darkRed:
         return Colors.white;
       case DayStatus.none:
-        return AppColors.onSurfaceVariant;
+        return Theme.of(context).colorScheme.onSurfaceVariant;
     }
   }
 }

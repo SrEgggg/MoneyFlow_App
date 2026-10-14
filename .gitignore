@@ -43,3 +43,27 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Private Android upload credentials
+/android/key.properties
+*.jks
+*.keystore
+
+# Private working notes and unrelated local files
+/.local/
+
+# Local credentials and financial data (never publish real backups)
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.key
+*.pem
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+/backups/
+/private/

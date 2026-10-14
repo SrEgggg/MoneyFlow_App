@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/constants/moods.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/empty_state.dart';
@@ -31,6 +30,7 @@ class _JournalTabState extends ConsumerState<JournalTab> {
   }
 
   Future<void> _save() async {
+    if (_saving) return;
     final mood = _mood;
     final content = _contentCtrl.text.trim();
     if (mood == null) {
@@ -43,29 +43,45 @@ class _JournalTabState extends ConsumerState<JournalTab> {
     }
     setState(() => _saving = true);
     final now = DateTime.now();
-    await ref.read(journalProvider.notifier).add(JournalRecord(
-          entryDate: DateTime(now.year, now.month, now.day),
-          mood: mood,
-          title: _titleCtrl.text.trim().isEmpty ? null : _titleCtrl.text.trim(),
-          content: content,
-          createdAt: now,
-          updatedAt: now,
-        ));
-    if (!mounted) return;
-    setState(() {
-      _saving = false;
-      _mood = null;
-      _titleCtrl.clear();
-      _contentCtrl.clear();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Journal entry saved')),
-    );
+    try {
+      await ref
+          .read(journalProvider.notifier)
+          .add(
+            JournalRecord(
+              entryDate: DateTime(now.year, now.month, now.day),
+              mood: mood,
+              title: _titleCtrl.text.trim().isEmpty
+                  ? null
+                  : _titleCtrl.text.trim(),
+              content: content,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _mood = null;
+        _titleCtrl.clear();
+        _contentCtrl.clear();
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Journal entry saved')));
+    } catch (_) {
+      if (mounted) {
+        setState(() => _saving = false);
+        _err('Could not save this entry. Try again.');
+      }
+    }
   }
 
   void _err(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
     );
   }
 
@@ -80,10 +96,10 @@ class _JournalTabState extends ConsumerState<JournalTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'How are you feeling about your finances today?',
                 style: TextStyle(
-                  color: AppColors.onSurfaceVariant,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                 ),
               ),
@@ -95,9 +111,7 @@ class _JournalTabState extends ConsumerState<JournalTab> {
               const SizedBox(height: 16),
               TextField(
                 controller: _titleCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Title (optional)',
-                ),
+                decoration: const InputDecoration(hintText: 'Title (optional)'),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -134,12 +148,12 @@ class _JournalTabState extends ConsumerState<JournalTab> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                   child: Text(
                     'Recent Entries',
                     style: TextStyle(
-                      color: AppColors.onSurface,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
@@ -178,7 +192,7 @@ class _MoodSelector extends StatelessWidget {
               decoration: BoxDecoration(
                 color: value == m.id
                     ? m.color.withValues(alpha: 0.18)
-                    : AppColors.surfaceContainerHigh,
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color: value == m.id ? m.color : Colors.transparent,
@@ -188,14 +202,20 @@ class _MoodSelector extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(m.icon,
-                      size: 16,
-                      color: value == m.id ? m.color : AppColors.onSurface),
+                  Icon(
+                    m.icon,
+                    size: 16,
+                    color: value == m.id
+                        ? m.color
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
                   const SizedBox(width: 6),
                   Text(
                     m.label,
                     style: TextStyle(
-                      color: value == m.id ? m.color : AppColors.onSurface,
+                      color: value == m.id
+                          ? m.color
+                          : Theme.of(context).colorScheme.onSurface,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -220,7 +240,7 @@ class _JournalEntryCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.surfaceContainer,
+          color: Theme.of(context).colorScheme.surfaceContainer,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
@@ -241,8 +261,8 @@ class _JournalEntryCard extends StatelessWidget {
                 const Spacer(),
                 Text(
                   D.relativeDay(entry.entryDate),
-                  style: const TextStyle(
-                    color: AppColors.onSurfaceVariant,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                   ),
                 ),
@@ -252,8 +272,8 @@ class _JournalEntryCard extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 entry.title!,
-                style: const TextStyle(
-                  color: AppColors.onSurface,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
@@ -262,8 +282,8 @@ class _JournalEntryCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               entry.content,
-              style: const TextStyle(
-                color: AppColors.onSurface,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
                 height: 1.4,
               ),

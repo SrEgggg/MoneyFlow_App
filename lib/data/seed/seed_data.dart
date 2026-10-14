@@ -54,10 +54,8 @@ class FirstRunInitializer {
   }
 }
 
-/// Seeds the app with realistic demo data so the screens match the design
-/// screenshots from a fresh install. Used only by the now-removed debug
-/// seed toggle — retained for reference. Demo data seeding is OFF by default;
-/// the app boots empty.
+/// Supplies synthetic records for the debug-only demo reset and tests.
+/// Normal first launch uses [FirstRunInitializer] and starts empty.
 class SeedRunner {
   final AppDatabase db;
   SeedRunner(this.db);

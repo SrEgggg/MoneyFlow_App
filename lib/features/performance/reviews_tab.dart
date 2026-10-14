@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
-import '../../app/theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/money.dart';
 import '../../providers.dart';
@@ -25,20 +24,7 @@ class _ReviewsTabState extends ConsumerState<ReviewsTab> {
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-          child: Text(
-            'Monthly Reviews',
-            style: TextStyle(
-              color: AppColors.onSurface,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
-        for (final m in months) _MonthReviewCard(month: m),
-      ],
+      children: [for (final m in months) _MonthReviewCard(month: m)],
     );
   }
 
@@ -55,7 +41,11 @@ class _MonthReviewCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cacheAsync = ref.watch(
-        dailyCacheForMonthProvider((month: month, cutoffHour: 3)));
+      dailyCacheForMonthProvider((
+        month: month,
+        cutoffHour: ref.watch(settingsProvider).valueOrNull?.cutoffHour ?? 3,
+      )),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: cacheAsync.when(
@@ -65,11 +55,12 @@ class _MonthReviewCard extends ConsumerWidget {
           final saved = income - expenses;
           final rate = income > 0 ? (saved / income) * 100 : 0.0;
           return Material(
-            color: AppColors.surfaceContainer,
+            color: Theme.of(context).colorScheme.surfaceContainer,
             borderRadius: BorderRadius.circular(14),
             child: InkWell(
-              onTap: () => context.push(Routes.performanceMonth(
-                  month.year, month.month)),
+              onTap: () => context.push(
+                Routes.performanceMonth(month.year, month.month),
+              ),
               borderRadius: BorderRadius.circular(14),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -79,12 +70,14 @@ class _MonthReviewCard extends ConsumerWidget {
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: AppColors.surfaceContainerHigh,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.calendar_month,
-                        color: AppColors.primary,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -94,25 +87,29 @@ class _MonthReviewCard extends ConsumerWidget {
                         children: [
                           Text(
                             D.monthYear(month),
-                            style: const TextStyle(
-                              color: AppColors.onSurface,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Saved ${Money.compact(saved)} • ${rate.toStringAsFixed(0)}% rate',
-                            style: const TextStyle(
-                              color: AppColors.onSurfaceVariant,
+                            'Net ${Money.of(context).compact(saved)} • ${rate.toStringAsFixed(0)}% retained',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 12,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const Icon(Icons.chevron_right,
-                        color: AppColors.onSurfaceVariant),
+                    Icon(
+                      Icons.chevron_right,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ],
                 ),
               ),

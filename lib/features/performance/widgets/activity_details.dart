@@ -29,7 +29,7 @@ class ActivityTotals extends StatelessWidget {
           children: [
             Text(item.$1, style: Theme.of(context).textTheme.bodySmall),
             Text(
-              Money.format(item.$2),
+              Money.of(context).format(item.$2),
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ],
@@ -54,15 +54,21 @@ class ActivityDetails extends ConsumerWidget {
       children: [
         ActivityTotals(activity: activity),
         const SizedBox(height: 12),
-        const Text(
-          'Goal savings earmark existing money. Net cash flow is income minus expenses.',
+        const ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          title: Text('About these totals'),
+          children: [
+            Text(
+              'Goal savings earmark existing money. Net cash flow is income minus expenses.',
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         if (activity.activeDays.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text(
-              'No activity on this day. Record money received or spent when it happens; there is no need to spend to keep a streak.',
+              'No activity on this day. Add a transaction to get started.',
             ),
           ),
         for (final tx in activity.transactions)
@@ -80,8 +86,12 @@ class ActivityDetails extends ConsumerWidget {
               goals.where((g) => g.id == c.goalId).firstOrNull?.name ??
                   'Goal contribution',
             ),
-            subtitle: const Text('Added to goal savings'),
-            trailing: Text(Money.format(c.amount)),
+            subtitle: Text(
+              c.amount < 0
+                  ? 'Withdrawn from goal savings'
+                  : 'Added to goal savings',
+            ),
+            trailing: Text(Money.of(context).format(c.amount)),
             onTap: () => context.push(Routes.goalDetail(c.goalId)),
           ),
         FilledButton.icon(
@@ -115,7 +125,8 @@ class ActivityDetails extends ConsumerWidget {
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
           ),
-          child: SingleChildScrollView(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(sheetContext).height * .8,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: QuickAddForm(
@@ -172,7 +183,7 @@ class FinancialActivityCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '🔥 ${streak.currentCount} day tracking streak · Best ${streak.bestCount}',
+                    '${streak.currentCount} day tracking streak · Best ${streak.bestCount}',
                   ),
                   const SizedBox(height: 12),
                   ActivityTotals(activity: month),

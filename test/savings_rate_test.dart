@@ -11,8 +11,8 @@ void main() {
       expect(Money.format(0), '₱0');
     });
 
-    test('formats decimals rounded to whole', () {
-      expect(Money.format(1234.5), '₱1,235');
+    test('preserves fractional cents display', () {
+      expect(Money.format(1234.5), '₱1,234.50');
     });
 
     test('formats negative as -peso', () {

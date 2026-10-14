@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/section_card.dart';
 import '../../data/models/models.dart';
@@ -40,13 +39,13 @@ class _StreakCard extends StatelessWidget {
   final StreakRecord streak;
   const _StreakCard({required this.streak});
 
-  ({String label, IconData icon, Color color, String hint}) _meta() {
+  ({String label, IconData icon, Color color, String hint}) _meta(context) {
     switch (streak.id) {
       case 'saving':
         return (
           label: 'Saving Streak',
           icon: Icons.savings,
-          color: AppColors.primary,
+          color: Theme.of(context).colorScheme.primary,
           hint: 'Consecutive days with a goal savings contribution',
         );
       case 'logging':
@@ -67,7 +66,7 @@ class _StreakCard extends StatelessWidget {
         return (
           label: streak.id,
           icon: Icons.local_fire_department,
-          color: AppColors.primary,
+          color: Theme.of(context).colorScheme.primary,
           hint: '',
         );
     }
@@ -75,7 +74,7 @@ class _StreakCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final m = _meta();
+    final m = _meta(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: SectionCard(
@@ -97,8 +96,8 @@ class _StreakCard extends StatelessWidget {
                 children: [
                   Text(
                     m.label,
-                    style: const TextStyle(
-                      color: AppColors.onSurface,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                     ),
@@ -106,8 +105,8 @@ class _StreakCard extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     m.hint,
-                    style: const TextStyle(
-                      color: AppColors.onSurfaceVariant,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
                     ),
                   ),
@@ -123,7 +122,7 @@ class _StreakCard extends StatelessWidget {
                       _Pill(
                         label: 'Best',
                         value: '${streak.bestCount} d',
-                        color: AppColors.onSurfaceVariant,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ],
                   ),
@@ -131,8 +130,8 @@ class _StreakCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       'Last qualified: ${D.shortDate(streak.lastQualifiedDay!)}',
-                      style: const TextStyle(
-                        color: AppColors.onSurfaceMuted,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
@@ -166,8 +165,8 @@ class _Pill extends StatelessWidget {
         children: [
           Text(
             '$label ',
-            style: const TextStyle(
-              color: AppColors.onSurfaceVariant,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),

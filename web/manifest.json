@@ -1,11 +1,11 @@
 {
-    "name": "savings_app",
-    "short_name": "savings_app",
+    "name": "MoneyFlow",
+    "short_name": "MoneyFlow",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0F1115",
+    "theme_color": "#0F1115",
+    "description": "Track your money and build your savings.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

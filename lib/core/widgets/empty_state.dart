@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-
-import '../../app/theme.dart';
+import 'app_ui.dart';
 
 class EmptyState extends StatelessWidget {
   final IconData icon;
@@ -14,63 +13,28 @@ class EmptyState extends StatelessWidget {
     this.subtitle,
     this.action,
   });
-
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+  Widget build(BuildContext context) => SingleChildScrollView(
+    child: Padding(
+      padding: const EdgeInsets.all(AppSpace.lg),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.primary.withValues(alpha: 0.20),
-                  AppColors.primary.withValues(alpha: 0.06),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.3),
-                width: 1,
-              ),
-            ),
-            child: Icon(icon, color: AppColors.primary, size: 32),
+          Icon(
+            icon,
+            size: 24,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(height: 18),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppColors.onSurface,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
-            ),
-          ),
+          const SizedBox(height: AppSpace.sm),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
           if (subtitle != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              subtitle!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.onSurfaceVariant,
-                fontSize: 13,
-                height: 1.4,
-              ),
-            ),
+            const SizedBox(height: AppSpace.xs),
+            Text(subtitle!, style: Theme.of(context).textTheme.bodyMedium),
           ],
-          if (action != null) ...[
-            const SizedBox(height: 18),
-            action!,
-          ],
+          if (action != null) ...[const SizedBox(height: AppSpace.sm), action!],
         ],
       ),
-    );
-  }
+    ),
+  );
 }

@@ -1,7 +1,9 @@
+import '../../core/utils/money_amount.dart';
+import '../../core/widgets/app_ui.dart';
+import 'money_movement_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/empty_state.dart';
 import '../../core/widgets/section_card.dart';
@@ -33,11 +35,44 @@ class _AccountDelete extends _AccountDialogResult {
 /// Adding/editing an account happens through a single [_AccountDialog]
 /// that handles validation. All balances are entered manually — there is
 /// no integration with banking APIs.
-class AccountsScreen extends ConsumerWidget {
+class AccountsScreen extends ConsumerStatefulWidget {
   const AccountsScreen({super.key});
+  @override
+  ConsumerState<AccountsScreen> createState() => _AccountsScreenState();
+}
+
+class _AccountsScreenState extends ConsumerState<AccountsScreen> {
+  bool _busy = false;
+  Future<void> _open(
+    BuildContext context,
+    WidgetRef ref, {
+    AccountRecord? existing,
+    AccountType? presetType,
+  }) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await _openAccountDialog(
+        context,
+        ref,
+        existing: existing,
+        presetType: presetType,
+      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open this account. Try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final accountsAsync = ref.watch(accountsProvider);
 
     return Scaffold(
@@ -47,17 +82,17 @@ class AccountsScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'Add account',
-            onPressed: () => _openAccountDialog(context, ref),
+            onPressed: _busy ? null : () => _open(context, ref),
           ),
         ],
       ),
       body: accountsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Text(
-            'Failed to load accounts: $e',
-            style: const TextStyle(color: AppColors.onSurfaceVariant),
-          ),
+        loading: () => const LoadingPlaceholder(lines: 4),
+        error: (_, __) => InlineNotice(
+          message:
+              'Could not load accounts. Your saved balances have not been changed.',
+          actionLabel: 'Try again',
+          onAction: () => ref.invalidate(accountsProvider),
         ),
         data: (accounts) {
           if (accounts.isEmpty) {
@@ -65,25 +100,9 @@ class AccountsScreen extends ConsumerWidget {
               icon: Icons.account_balance_wallet_outlined,
               title: 'No accounts yet',
               subtitle:
-                  'Add your first account — bank, e-wallet, or cash — to start tracking your savings.',
-              action: FilledButton.icon(
-                onPressed: () => _openAccountDialog(context, ref),
-                icon: const Icon(Icons.add),
-                label: const Text('Add account'),
-              ),
+                  'Use the + button above to add a bank account, e-wallet or cash wallet.',
             );
           }
-
-          // Group by AccountType, preserving a stable ordering.
-          final groups = <AccountType, List<AccountRecord>>{};
-          for (final t in AccountType.values) {
-            groups[t] = [];
-          }
-          for (final a in accounts) {
-            groups[AccountType.fromId(a.type)]!.add(a);
-          }
-          // Drop empty groups.
-          groups.removeWhere((_, v) => v.isEmpty);
 
           final totalBalance = accounts.fold<double>(
             0,
@@ -93,58 +112,48 @@ class AccountsScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
+              if (accounts
+                      .map((a) => a.name.trim().toLowerCase())
+                      .toSet()
+                      .length !=
+                  accounts.length)
+                const InlineNotice(
+                  message:
+                      'Some accounts share a name. Rename them before recording money. Existing history keeps the original name; no accounts are merged.',
+                ),
               _TotalCard(accounts: accounts, totalBalance: totalBalance),
               const SizedBox(height: 12),
-              for (final entry in groups.entries) ...[
-                SectionCard(
-                  title: entry.key.label,
-                  subtitle:
-                      '${entry.value.length} '
-                      '${entry.value.length == 1 ? 'account' : 'accounts'}',
-                  trailing: IconButton(
-                    icon: const Icon(Icons.add, size: 18),
-                    color: AppColors.primary,
-                    onPressed: () =>
-                        _openAccountDialog(context, ref, presetType: entry.key),
-                  ),
-                  child: Column(
-                    children: [
-                      for (int i = 0; i < entry.value.length; i++) ...[
-                        AccountTile(
-                          account: entry.value[i],
-                          onTap: () => _openAccountDialog(
-                            context,
-                            ref,
-                            existing: entry.value[i],
-                          ),
-                        ),
-                        if (i < entry.value.length - 1)
-                          const Divider(
-                            color: AppColors.outline,
-                            height: 1,
-                            thickness: 1,
-                          ),
-                      ],
-                    ],
-                  ),
+              AsyncAction(
+                action: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => MoneyMovementDialog(accounts: accounts),
                 ),
-                const SizedBox(height: 12),
-              ],
+                builder: (busy, run) => FilledButton.icon(
+                  onPressed: busy ? null : run,
+                  icon: const Icon(Icons.swap_horiz),
+                  label: const Text('Move money'),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SectionCard(
+                title: 'Your accounts',
+                child: Column(
+                  children: [
+                    for (var i = 0; i < accounts.length; i++) ...[
+                      AccountTile(
+                        account: accounts[i],
+                        onTap: _busy
+                            ? null
+                            : () => _open(context, ref, existing: accounts[i]),
+                      ),
+                      if (i < accounts.length - 1) const Divider(height: 1),
+                    ],
+                  ],
+                ),
+              ),
             ],
           );
         },
-      ),
-      floatingActionButton: accountsAsync.maybeWhen(
-        data: (accounts) => accounts.isEmpty
-            ? null
-            : FloatingActionButton.extended(
-                onPressed: () => _openAccountDialog(context, ref),
-                icon: const Icon(Icons.add),
-                label: const Text('Add account'),
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.onPrimary,
-              ),
-        orElse: () => null,
       ),
     );
   }
@@ -158,7 +167,7 @@ class _TotalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SectionCard(
-      background: AppColors.primary,
+      background: Theme.of(context).colorScheme.surfaceContainer,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       child: Row(
         children: [
@@ -166,10 +175,10 @@ class _TotalCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Total Savings',
+                Text(
+                  'Current Balance',
                   style: TextStyle(
-                    color: Color(0xFFC7F0D3),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
                   ),
@@ -179,9 +188,9 @@ class _TotalCard extends StatelessWidget {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    Money.format(totalBalance),
-                    style: const TextStyle(
-                      color: Colors.white,
+                    Money.of(context).format(totalBalance),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 30,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.6,
@@ -192,9 +201,9 @@ class _TotalCard extends StatelessWidget {
                 Text(
                   'Across ${accounts.length} '
                   '${accounts.length == 1 ? 'account' : 'accounts'}',
-                  style: const TextStyle(
-                    color: Color(0xFFC7F0D3),
-                    fontSize: 11,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -227,28 +236,54 @@ Future<void> _openAccountDialog(
   AccountRecord? existing,
   AccountType? presetType,
 }) async {
+  final linked =
+      existing != null &&
+      await ref.read(accountRepoProvider).hasLinkedRecords(existing.name);
+  if (!context.mounted) return;
   final result = await showDialog<_AccountDialogResult>(
     context: context,
-    builder: (_) => _AccountDialog(existing: existing, presetType: presetType),
+    builder: (_) => _AccountDialog(
+      existing: existing,
+      presetType: presetType,
+      accounts: ref.read(accountsProvider).valueOrNull ?? [],
+      hasLinkedRecords: linked,
+    ),
   );
   if (result == null) return;
 
   if (!context.mounted) return;
   try {
-  final notifier = ref.read(accountsProvider.notifier);
-  if (result is _AccountUpsert) {
-    if (existing == null) {
-      await notifier.add(result.record);
-    } else {
-      await notifier.edit(result.record);
+    final notifier = ref.read(accountsProvider.notifier);
+    if (result is _AccountUpsert) {
+      if (existing == null) {
+        await notifier.add(result.record);
+      } else {
+        await notifier.edit(result.record, expectedBalance: existing.balance);
+      }
+    } else if (result is _AccountDelete) {
+      await notifier.remove(result.id);
     }
-  } else if (result is _AccountDelete) {
-    await notifier.remove(result.id);
-  }
-  // Recompute the home summary so streaks and insights stay in sync.
-  ref.invalidate(homeSummaryProvider);
+    // Recompute the home summary so streaks and insights stay in sync.
+    ref.invalidate(homeSummaryProvider);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result is _AccountDelete
+                ? 'Account deleted'
+                : existing == null
+                ? 'Account added'
+                : 'Account updated',
+          ),
+        ),
+      );
+    }
   } catch (e) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save account: $e')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not save account: $e')));
+    }
   }
 }
 
@@ -257,7 +292,14 @@ Future<void> _openAccountDialog(
 class _AccountDialog extends StatefulWidget {
   final AccountRecord? existing;
   final AccountType? presetType;
-  const _AccountDialog({this.existing, this.presetType});
+  final List<AccountRecord> accounts;
+  final bool hasLinkedRecords;
+  const _AccountDialog({
+    this.existing,
+    this.presetType,
+    required this.accounts,
+    required this.hasLinkedRecords,
+  });
 
   @override
   State<_AccountDialog> createState() => _AccountDialogState();
@@ -279,6 +321,8 @@ class _AccountDialogState extends State<_AccountDialog> {
   late final TextEditingController _balanceCtrl;
   late AccountType _type;
   late Color _color;
+  bool _confirming = false;
+  bool _submitted = false;
 
   @override
   void initState() {
@@ -312,7 +356,8 @@ class _AccountDialogState extends State<_AccountDialog> {
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_confirming || _submitted) return;
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(
@@ -320,13 +365,52 @@ class _AccountDialogState extends State<_AccountDialog> {
       ).showSnackBar(const SnackBar(content: Text('Account name is required')));
       return;
     }
+    if (widget.accounts.any(
+      (a) =>
+          a.id != widget.existing?.id &&
+          a.name.trim().toLowerCase() == name.toLowerCase(),
+    )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Choose a unique account name.')),
+      );
+      return;
+    }
     final raw = _balanceCtrl.text.replaceAll(',', '').trim();
     final balance = raw.isEmpty ? 0.0 : double.tryParse(raw);
-    if (balance == null || !balance.isFinite) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Enter a valid balance')));
+    if (balance == null || !MoneyAmount.valid(balance, signed: true)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Use up to 999,999,999.99 and at most two decimal places',
+          ),
+        ),
+      );
       return;
+    }
+    if (widget.existing != null && balance != widget.existing!.balance) {
+      setState(() => _confirming = true);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Correct account balance?'),
+          content: const Text(
+            'This replaces the recorded balance without adding income or expenses. Use Move money for normal deposits, withdrawals and transfers.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Correct balance'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      setState(() => _confirming = false);
+      if (confirmed != true) return;
     }
     final record = AccountRecord(
       id: widget.existing?.id,
@@ -336,6 +420,7 @@ class _AccountDialogState extends State<_AccountDialog> {
       color: '#${_toHex(_color)}',
       sortOrder: widget.existing?.sortOrder ?? 0,
     );
+    _submitted = true;
     Navigator.pop(context, _AccountUpsert(record));
   }
 
@@ -343,7 +428,7 @@ class _AccountDialogState extends State<_AccountDialog> {
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
     return AlertDialog(
-      backgroundColor: AppColors.surfaceContainer,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
       title: Text(isEdit ? 'Edit account' : 'Add account'),
       content: SingleChildScrollView(
         child: Column(
@@ -362,7 +447,9 @@ class _AccountDialogState extends State<_AccountDialog> {
             const SizedBox(height: 12),
             DropdownButtonFormField<AccountType>(
               initialValue: _type,
-              dropdownColor: AppColors.surfaceContainerHigh,
+              dropdownColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest,
               decoration: const InputDecoration(labelText: 'Account type'),
               items: [
                 for (final t in AccountType.values)
@@ -388,14 +475,21 @@ class _AccountDialogState extends State<_AccountDialog> {
               decoration: InputDecoration(
                 labelText: 'Current balance',
                 hintText: '0',
-                prefixText: '${Money.symbol} ',
+                prefixText: '${Money.of(context).symbol} ',
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            if (widget.hasLinkedRecords)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'This account has linked history or recurring rules. Deletion is unavailable; your records are kept.',
+                ),
+              ),
+            Text(
               'Color',
               style: TextStyle(
-                color: AppColors.onSurfaceVariant,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 12,
                 fontWeight: FontWeight.w500,
               ),
@@ -405,20 +499,42 @@ class _AccountDialogState extends State<_AccountDialog> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                for (final swatch in _swatches)
-                  GestureDetector(
-                    onTap: () => setState(() => _color = swatch),
-                    child: Container(
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: swatch,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: _color.toARGB32() == swatch.toARGB32()
-                              ? Colors.white
-                              : Colors.transparent,
-                          width: 2.5,
+                for (var i = 0; i < _swatches.length; i++)
+                  Semantics(
+                    label: const [
+                      'Green',
+                      'Blue',
+                      'Purple',
+                      'Teal',
+                      'Yellow',
+                      'Red',
+                      'Pink',
+                      'Gray',
+                    ][i],
+                    button: true,
+                    selected: _color.toARGB32() == _swatches[i].toARGB32(),
+                    child: InkWell(
+                      onTap: () => setState(() => _color = _swatches[i]),
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: 48,
+                        height: 48,
+                        child: Center(
+                          child: Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: _swatches[i],
+                              shape: BoxShape.circle,
+                            ),
+                            child: _color.toARGB32() == _swatches[i].toARGB32()
+                                ? const Icon(
+                                    Icons.check,
+                                    color: Colors.black,
+                                    size: 22,
+                                  )
+                                : null,
+                          ),
                         ),
                       ),
                     ),
@@ -431,8 +547,12 @@ class _AccountDialogState extends State<_AccountDialog> {
       actions: [
         if (isEdit)
           TextButton(
-            style: TextButton.styleFrom(foregroundColor: AppColors.error),
-            onPressed: () => _confirmDelete(context),
+            style: TextButton.styleFrom(
+              foregroundColor: Theme.of(context).colorScheme.error,
+            ),
+            onPressed: widget.hasLinkedRecords
+                ? null
+                : () => _confirmDelete(context),
             child: const Text('Delete'),
           ),
         TextButton(
@@ -448,12 +568,11 @@ class _AccountDialogState extends State<_AccountDialog> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surfaceContainer,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
         title: const Text('Delete account?'),
         content: Text(
           '"${widget.existing!.name}" will be removed. '
-          'Existing transactions that reference it will keep the name '
-          'as plain text.',
+          'Deletion is blocked when transactions or recurring rules still reference this account. Your history will not be deleted.',
         ),
         actions: [
           TextButton(
@@ -461,7 +580,9 @@ class _AccountDialogState extends State<_AccountDialog> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),

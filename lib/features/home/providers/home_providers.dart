@@ -1,3 +1,4 @@
+import '../../../core/utils/money.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -66,6 +67,7 @@ class SmartInsightsRuleEngine {
     required int savingStreak,
     required int loggingStreak,
     required double avgMonthlySavings,
+    String currency = 'PHP',
   }) {
     final insights = <SmartInsight>[];
 
@@ -112,7 +114,8 @@ class SmartInsightsRuleEngine {
         insights.add(
           SmartInsight(
             id: 'food_change',
-            message: 'Food spending $verb ${_peso(diff.abs().round())}.',
+            message:
+                'Food spending $verb ${MoneyFormatter(currency).format(diff.abs())}.',
             icon: Icons.restaurant_menu,
             color: diff > 0 ? const Color(0xFFF97316) : const Color(0xFF22C55E),
           ),
@@ -163,7 +166,7 @@ class SmartInsightsRuleEngine {
             SmartInsight(
               id: 'streak_active',
               message:
-                  "🔥 $loggingStreak-day logging streak — keep it going today!",
+                  "$loggingStreak-day logging streak — keep it going today!",
               icon: Icons.local_fire_department,
               color: const Color(0xFFF97316),
             ),
@@ -193,23 +196,14 @@ class SmartInsightsRuleEngine {
     }
     return total;
   }
-
-  static String _peso(int v) {
-    final s = v.toString();
-    if (s.length <= 3) return '₱$s';
-    final buf = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
-      buf.write(s[i]);
-    }
-    return '₱$buf';
-  }
 }
 
 /// The main Home data provider.
 final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  final cutoffHour = (await ref.watch(settingsProvider.future)).cutoffHour;
+  final cutoffHour = ref.watch(
+    settingsProvider.select((s) => s.valueOrNull?.cutoffHour ?? 3),
+  );
 
   final cacheRepo = CacheRepo(db);
 
@@ -314,6 +308,9 @@ final homeSummaryProvider = FutureProvider<HomeSummary>((ref) async {
     savingStreak: savingStreak,
     loggingStreak: loggingStreak,
     avgMonthlySavings: avgMonthlySavings,
+    currency: ref.watch(
+      settingsProvider.select((s) => s.valueOrNull?.currency ?? 'PHP'),
+    ),
   );
 
   return HomeSummary(

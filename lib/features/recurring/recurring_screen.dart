@@ -66,7 +66,7 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
         );
     final saved = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: AppColors.surfaceContainer,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -77,10 +77,10 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: AppColors.surfaceContainerHigh,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
         content: Text(
           existing == null ? 'Rule added' : 'Rule updated',
-          style: const TextStyle(color: AppColors.onSurface),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
       ),
     );
@@ -107,12 +107,14 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: AppColors.surfaceContainerHigh,
+          backgroundColor: Theme.of(
+            context,
+          ).colorScheme.surfaceContainerHighest,
           content: Text(
             count == 0
                 ? 'Nothing to run right now.'
                 : 'Posted $count ${count == 1 ? "transaction" : "transactions"}.${count >= 1000 ? " Run again to check remaining overdue dates." : ""}',
-            style: const TextStyle(color: AppColors.onSurface),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
           ),
         ),
       );
@@ -122,7 +124,7 @@ class _RecurringScreenState extends ConsumerState<RecurringScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: AppColors.error,
+          backgroundColor: Theme.of(context).colorScheme.error,
           content: Text(
             'Run failed: $e',
             style: const TextStyle(color: AppColors.onPrimary),
@@ -175,7 +177,7 @@ class _RunAllCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.primary.withValues(alpha: 0.10),
+      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.10),
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -188,32 +190,34 @@ class _RunAllCard extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.22),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.primary.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: running
-                    ? const Padding(
+                    ? Padding(
                         padding: EdgeInsets.all(9),
                         child: CircularProgressIndicator(
                           strokeWidth: 2.4,
-                          color: AppColors.primary,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       )
-                    : const Icon(
+                    : Icon(
                         Icons.play_arrow_rounded,
-                        color: AppColors.primary,
+                        color: Theme.of(context).colorScheme.primary,
                         size: 20,
                       ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Run due rules now',
                       style: TextStyle(
-                        color: AppColors.onSurface,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
                       ),
@@ -222,16 +226,16 @@ class _RunAllCard extends StatelessWidget {
                     Text(
                       'Posts overdue dates through today, up to 1,000 per run.',
                       style: TextStyle(
-                        color: AppColors.onSurfaceVariant,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                       ),
                     ),
                   ],
                 ),
               ),
-              const Icon(
+              Icon(
                 Icons.chevron_right,
-                color: AppColors.onSurfaceVariant,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 size: 20,
               ),
             ],
@@ -251,11 +255,11 @@ class _RecurringTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = rule.isActive;
     final typeColor = rule.type == TxType.income
-        ? AppColors.primary
-        : AppColors.error;
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.error;
     final lastRun = rule.lastRunAt;
     return Material(
-      color: AppColors.surfaceContainer,
+      color: Theme.of(context).colorScheme.surfaceContainer,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
@@ -289,8 +293,8 @@ class _RecurringTile extends StatelessWidget {
                       children: [
                         Text(
                           rule.name,
-                          style: const TextStyle(
-                            color: AppColors.onSurface,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -300,8 +304,10 @@ class _RecurringTile extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           '${rule.cadenceLabel} · ${rule.type == TxType.income ? 'Income' : 'Expense'}',
-                          style: const TextStyle(
-                            color: AppColors.onSurfaceVariant,
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
                           ),
@@ -313,7 +319,7 @@ class _RecurringTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        '${rule.type == TxType.income ? '+' : '-'}${Money.format(rule.amount)}',
+                        '${rule.type == TxType.income ? '+' : '-'}${Money.of(context).format(rule.amount)}',
                         style: TextStyle(
                           color: typeColor,
                           fontSize: 15,
@@ -328,16 +334,22 @@ class _RecurringTile extends StatelessWidget {
                         ),
                         decoration: BoxDecoration(
                           color: active
-                              ? AppColors.primary.withValues(alpha: 0.18)
-                              : AppColors.surfaceContainerHigh,
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.18)
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           active ? 'Active' : 'Paused',
                           style: TextStyle(
                             color: active
-                                ? AppColors.primary
-                                : AppColors.onSurfaceVariant,
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
                             letterSpacing: 0.4,
@@ -355,22 +367,22 @@ class _RecurringTile extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.surfaceContainerHigh,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.schedule,
                       size: 13,
-                      color: AppColors.onSurfaceVariant,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         'Next: ${D.fullDate(rule.nextRunAt)}',
-                        style: const TextStyle(
-                          color: AppColors.onSurfaceVariant,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
@@ -380,8 +392,8 @@ class _RecurringTile extends StatelessWidget {
                       const SizedBox(width: 8),
                       Text(
                         'Last: ${D.fullDate(lastRun)}',
-                        style: const TextStyle(
-                          color: AppColors.onSurfaceMuted,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
                         ),
@@ -412,7 +424,7 @@ class _EmptyState extends StatelessWidget {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: AppColors.surfaceContainerHigh,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: const Icon(
@@ -422,19 +434,21 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No recurring rules',
               style: TextStyle(
-                color: AppColors.onSurface,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Set up salary, rent, or subscriptions and they post automatically on their schedule.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

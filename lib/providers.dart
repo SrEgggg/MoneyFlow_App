@@ -1,3 +1,5 @@
+import 'core/constants/categories.dart';
+import 'data/repositories/category_repository.dart';
 import 'dart:async';
 import 'core/utils/activity_summary.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -197,10 +199,7 @@ final firstRunProvider = FutureProvider<void>((ref) async {
     ref.read(recurringIssueProvider.notifier).state =
         'Scheduled transactions could not be posted. This batch made no changes. Review your recurring rules and retry.';
   }
-  final settings = await ref.read(settingsRepoProvider).load();
-  await ref
-      .read(recalcServiceProvider)
-      .recomputeAll(cutoffHour: settings.cutoffHour);
+  await refreshDerivedData(ref);
 });
 
 /// Refresh time-dependent activity when the date changes, including after resume.
@@ -217,4 +216,18 @@ final activityProvider = FutureProvider<ActivitySummary>((ref) async {
 });
 
 /// A failed automatic batch must be visible without blocking access to the app.
+final derivedDataIssueProvider = StateProvider<String?>((ref) => null);
+final refreshDerivedDataProvider = Provider<Future<void> Function()>(
+  (ref) =>
+      () => refreshDerivedData(ref),
+);
+
 final recurringIssueProvider = StateProvider<String?>((ref) => null);
+
+final categoryRepoProvider = Provider<CategoryRepository>(
+  (ref) => CategoryRepository(ref.watch(databaseProvider).requireValue),
+);
+final customCategoriesProvider = FutureProvider<List<TxCategory>>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return CategoryRepository(db).all();
+});

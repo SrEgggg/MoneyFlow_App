@@ -2,7 +2,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/constants/categories.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/money.dart';
@@ -40,11 +39,11 @@ class _NetWorthChart extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cacheAsync = ref.watch(_recentCacheProvider(90));
     return SectionCard(
-      title: 'Net Worth Growth',
+      title: 'Cumulative cash flow',
       child: SizedBox(
         height: 180,
         child: cacheAsync.when(
-          data: (days) => _buildLine(days, _cumulativeSaved(days)),
+          data: (days) => _buildLine(context, days, _cumulativeSaved(days)),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Error: $e')),
         ),
@@ -62,11 +61,19 @@ class _NetWorthChart extends ConsumerWidget {
     return spots;
   }
 
-  Widget _buildLine(List<DailyPerformance> days, List<FlSpot> spots) {
-    if (spots.isEmpty) {
-      return const Center(
-        child: Text('No data yet',
-            style: TextStyle(color: AppColors.onSurfaceVariant)),
+  Widget _buildLine(
+    BuildContext context,
+    List<DailyPerformance> days,
+    List<FlSpot> spots,
+  ) {
+    if (spots.length < 2) {
+      return Center(
+        child: Text(
+          'Record activity on two dates to see a trend.',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
       );
     }
     final minY = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
@@ -79,8 +86,8 @@ class _NetWorthChart extends ConsumerWidget {
         gridData: FlGridData(
           show: true,
           drawVerticalLine: false,
-          getDrawingHorizontalLine: (_) => const FlLine(
-            color: AppColors.outline,
+          getDrawingHorizontalLine: (_) => FlLine(
+            color: Theme.of(context).colorScheme.outline,
             strokeWidth: 0.5,
           ),
         ),
@@ -104,8 +111,8 @@ class _NetWorthChart extends ConsumerWidget {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     D.dayMonth(days[i].date),
-                    style: const TextStyle(
-                      color: AppColors.onSurfaceVariant,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 9,
                     ),
                   ),
@@ -119,9 +126,9 @@ class _NetWorthChart extends ConsumerWidget {
               reservedSize: 40,
               getTitlesWidget: (v, _) {
                 return Text(
-                  Money.compact(v),
-                  style: const TextStyle(
-                    color: AppColors.onSurfaceVariant,
+                  Money.of(context).compact(v),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 9,
                   ),
                 );
@@ -132,13 +139,15 @@ class _NetWorthChart extends ConsumerWidget {
         lineBarsData: [
           LineChartBarData(
             spots: spots,
-            isCurved: true,
-            color: AppColors.primary,
+            isCurved: false,
+            color: Theme.of(context).colorScheme.primary,
             barWidth: 2.5,
             dotData: const FlDotData(show: false),
             belowBarData: BarAreaData(
               show: true,
-              color: AppColors.primary.withValues(alpha: 0.15),
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.15),
             ),
           ),
         ],
@@ -176,9 +185,13 @@ class _CategoryTrendsChart extends ConsumerWidget {
               ..sort((a, b) => b.value.compareTo(a.value));
             final top = entries.take(5).toList();
             if (top.isEmpty) {
-              return const Center(
-                child: Text('No expenses in the last 30 days',
-                    style: TextStyle(color: AppColors.onSurfaceVariant)),
+              return Center(
+                child: Text(
+                  'No expenses in the last 30 days',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
               );
             }
             return BarChart(
@@ -206,9 +219,11 @@ class _CategoryTrendsChart extends ConsumerWidget {
                         return Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            top[i].key.split('_').first,
-                            style: const TextStyle(
-                              color: AppColors.onSurfaceVariant,
+                            Categories.resolve(context, top[i].key).name,
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                               fontSize: 9,
                             ),
                           ),
@@ -221,9 +236,9 @@ class _CategoryTrendsChart extends ConsumerWidget {
                       showTitles: true,
                       reservedSize: 36,
                       getTitlesWidget: (v, _) => Text(
-                        Money.compact(v),
-                        style: const TextStyle(
-                          color: AppColors.onSurfaceVariant,
+                        Money.of(context).compact(v),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 9,
                         ),
                       ),
@@ -237,7 +252,7 @@ class _CategoryTrendsChart extends ConsumerWidget {
                       barRods: [
                         BarChartRodData(
                           toY: top[i].value,
-                          color: Categories.byId(top[i].key).color,
+                          color: Categories.resolve(context, top[i].key).color,
                           width: 16,
                           borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(4),
@@ -265,12 +280,16 @@ class _DrawdownCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cacheAsync = ref.watch(_recentCacheProvider(90));
     return SectionCard(
-      title: 'Drawdown Analysis',
+      title: 'Cash flow decline',
       child: cacheAsync.when(
         data: (days) {
           if (days.isEmpty) {
-            return const Text('No data',
-                style: TextStyle(color: AppColors.onSurfaceVariant));
+            return Text(
+              'No data',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            );
           }
           double running = 0;
           double peak = 0;
@@ -283,13 +302,26 @@ class _DrawdownCard extends ConsumerWidget {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _stat('Peak saved', Money.format(peak), AppColors.primary),
-              _stat('Current saved', Money.format(current), AppColors.onSurface),
+              _stat(
+                context,
+                'Peak saved',
+                Money.of(context).format(peak),
+                Theme.of(context).colorScheme.primary,
+              ),
+              _stat(
+                context,
+                'Current saved',
+                Money.of(context).format(current),
+                Theme.of(context).colorScheme.onSurface,
+              ),
               const SizedBox(height: 8),
               _stat(
+                context,
                 'Drawdown',
-                Money.format(diff),
-                diff > 0 ? AppColors.error : AppColors.onSurfaceVariant,
+                Money.of(context).format(diff),
+                diff > 0
+                    ? Theme.of(context).colorScheme.error
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ],
           );
@@ -303,15 +335,15 @@ class _DrawdownCard extends ConsumerWidget {
     );
   }
 
-  Widget _stat(String label, String value, Color color) {
+  Widget _stat(BuildContext context, String label, String value, Color color) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.onSurfaceVariant,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 13,
             ),
           ),
@@ -351,24 +383,24 @@ class _CashFlowCard extends ConsumerWidget {
                 Expanded(
                   child: _BigStat(
                     label: 'Income',
-                    value: Money.format(income),
-                    color: AppColors.primary,
+                    value: Money.of(context).format(income),
+                    color: Theme.of(context).colorScheme.primary,
                     icon: Icons.arrow_upward,
                   ),
                 ),
                 Expanded(
                   child: _BigStat(
                     label: 'Expenses',
-                    value: Money.format(expenses),
-                    color: AppColors.error,
+                    value: Money.of(context).format(expenses),
+                    color: Theme.of(context).colorScheme.error,
                     icon: Icons.arrow_downward,
                   ),
                 ),
                 Expanded(
                   child: _BigStat(
                     label: 'Saved',
-                    value: Money.format(saved),
-                    color: AppColors.primary,
+                    value: Money.of(context).format(saved),
+                    color: Theme.of(context).colorScheme.primary,
                     icon: Icons.savings,
                   ),
                 ),
@@ -412,8 +444,8 @@ class _BigStat extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(
-            color: AppColors.onSurfaceVariant,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 11,
           ),
         ),
@@ -424,11 +456,11 @@ class _BigStat extends StatelessWidget {
 
 /// Helper provider: returns the daily cache for the last N days.
 final _recentCacheProvider = FutureProvider.family
-    .autoDispose<List<DailyPerformance>, int>(
-  (ref, days) async {
-    final repo = ref.watch(cacheRepoProvider);
-    final end = DateTime.now();
-    final start = end.subtract(Duration(days: days));
-    return repo.rangeInclusive(start, end, cutoffHour: 3);
-  },
-);
+    .autoDispose<List<DailyPerformance>, int>((ref, days) async {
+      ref.watch(transactionsProvider);
+      final cutoff = ref.watch(settingsProvider).valueOrNull?.cutoffHour ?? 3;
+      final repo = ref.watch(cacheRepoProvider);
+      final end = DateTime.now();
+      final start = end.subtract(Duration(days: days));
+      return repo.rangeInclusive(start, end, cutoffHour: cutoff);
+    });

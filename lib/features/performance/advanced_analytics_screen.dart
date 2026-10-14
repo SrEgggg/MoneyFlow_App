@@ -1,8 +1,8 @@
+import '../../core/constants/categories.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/utils/financial_day.dart';
 import '../../core/utils/money.dart';
 import '../../core/widgets/section_card.dart';
@@ -38,11 +38,13 @@ class AdvancedAnalyticsScreen extends ConsumerWidget {
 /// Range helper for the last N days of cache.
 final _recentCacheProvider = FutureProvider.family
     .autoDispose<List<DailyPerformance>, int>((ref, days) async {
-  final repo = ref.watch(cacheRepoProvider);
-  final end = DateTime.now();
-  final start = end.subtract(Duration(days: days));
-  return repo.rangeInclusive(start, end, cutoffHour: 3);
-});
+      ref.watch(transactionsProvider);
+      final cutoff = ref.watch(settingsProvider).valueOrNull?.cutoffHour ?? 3;
+      final repo = ref.watch(cacheRepoProvider);
+      final end = DateTime.now();
+      final start = end.subtract(Duration(days: days));
+      return repo.rangeInclusive(start, end, cutoffHour: cutoff);
+    });
 
 class _NetWorthCard extends ConsumerWidget {
   const _NetWorthCard();
@@ -50,12 +52,12 @@ class _NetWorthCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cacheAsync = ref.watch(_recentCacheProvider(90));
     return SectionCard(
-      title: 'Net Worth Growth',
+      title: 'Cumulative cash flow',
       subtitle: 'Last 90 days',
       child: SizedBox(
         height: 180,
         child: cacheAsync.when(
-          data: (days) => _buildLine(days),
+          data: (days) => _buildLine(context, days),
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Error: $e')),
         ),
@@ -63,11 +65,15 @@ class _NetWorthCard extends ConsumerWidget {
     );
   }
 
-  Widget _buildLine(List<DailyPerformance> days) {
-    if (days.isEmpty) {
-      return const Center(
-        child: Text('No data yet',
-            style: TextStyle(color: AppColors.onSurfaceVariant)),
+  Widget _buildLine(BuildContext context, List<DailyPerformance> days) {
+    if (days.length < 2) {
+      return Center(
+        child: Text(
+          'Record activity on two dates to see a trend.',
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
       );
     }
     final spots = <FlSpot>[];
@@ -84,14 +90,16 @@ class _NetWorthCard extends ConsumerWidget {
         lineBarsData: [
           LineChartBarData(
             spots: spots,
-            isCurved: true,
+            isCurved: false,
             curveSmoothness: 0.25,
-            color: AppColors.primary,
+            color: Theme.of(context).colorScheme.primary,
             barWidth: 2.5,
             dotData: const FlDotData(show: false),
             belowBarData: BarAreaData(
               show: true,
-              color: AppColors.primary.withValues(alpha: 0.18),
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.18),
             ),
           ),
         ],
@@ -106,13 +114,17 @@ class _DrawdownCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cacheAsync = ref.watch(_recentCacheProvider(90));
     return SectionCard(
-      title: 'Drawdown Analysis',
-      subtitle: 'Highest vs current cumulative savings',
+      title: 'Cash flow decline',
+      subtitle: 'Peak vs current cash flow · last 90 days',
       child: cacheAsync.when(
         data: (days) {
           if (days.isEmpty) {
-            return const Text('No data',
-                style: TextStyle(color: AppColors.onSurfaceVariant));
+            return Text(
+              'No data',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            );
           }
           double running = 0;
           double peak = 0;
@@ -123,15 +135,22 @@ class _DrawdownCard extends ConsumerWidget {
           final diff = peak - running;
           return Row(
             children: [
-              _DrawdownStat(label: 'Peak', value: Money.format(peak)),
+              _DrawdownStat(
+                label: 'Peak',
+                value: Money.of(context).format(peak),
+              ),
               const SizedBox(width: 12),
               _DrawdownStat(
-                  label: 'Current', value: Money.format(running)),
+                label: 'Current',
+                value: Money.of(context).format(running),
+              ),
               const SizedBox(width: 12),
               _DrawdownStat(
                 label: 'Drawdown',
-                value: Money.format(diff),
-                color: diff > 0 ? AppColors.error : AppColors.primary,
+                value: Money.of(context).format(diff),
+                color: diff > 0
+                    ? Theme.of(context).colorScheme.error
+                    : Theme.of(context).colorScheme.primary,
               ),
             ],
           );
@@ -155,26 +174,30 @@ class _DrawdownStat extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.surfaceContainerHigh,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                style: const TextStyle(
-                  color: AppColors.onSurfaceVariant,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.4,
-                )),
+            Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+              ),
+            ),
             const SizedBox(height: 4),
-            Text(value,
-                style: TextStyle(
-                  color: color ?? AppColors.onSurface,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                )),
+            Text(
+              value,
+              style: TextStyle(
+                color: color ?? Theme.of(context).colorScheme.onSurface,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       ),
@@ -191,48 +214,62 @@ class _CategoryTrendsCard extends ConsumerWidget {
       title: 'Category Trends',
       subtitle: 'This month vs last month',
       child: txsAsync.when(
-        data: (txs) => _build(txs),
+        data: (txs) => _build(context, txs),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
   }
 
-  Widget _build(List<TxRecord> txs) {
+  Widget _build(BuildContext context, List<TxRecord> txs) {
     final now = DateTime.now();
     final thisMonthStart = DateTime(now.year, now.month, 1);
     final lastMonthStart = DateTime(now.year, now.month - 1, 1);
 
     double sumThis(Set<String> ids) {
       return txs
-          .where((t) =>
-              t.type == TxType.expense &&
-              ids.contains(t.category) &&
-              FinancialDay.key(t.occurredAt).isAfter(
-                  thisMonthStart.subtract(const Duration(days: 1))))
-          .where((t) => FinancialDay.key(t.occurredAt).isBefore(
-              DateTime(now.year, now.month + 1, 1)))
+          .where(
+            (t) =>
+                t.type == TxType.expense &&
+                ids.contains(t.category) &&
+                FinancialDay.key(
+                  t.occurredAt,
+                ).isAfter(thisMonthStart.subtract(const Duration(days: 1))),
+          )
+          .where(
+            (t) => FinancialDay.key(
+              t.occurredAt,
+            ).isBefore(DateTime(now.year, now.month + 1, 1)),
+          )
           .fold<double>(0, (a, t) => a + t.amount);
     }
 
     double sumLast(Set<String> ids) {
       return txs
-          .where((t) =>
-              t.type == TxType.expense &&
-              ids.contains(t.category) &&
-              FinancialDay.key(t.occurredAt)
-                  .isAfter(lastMonthStart.subtract(const Duration(days: 1))))
-          .where((t) =>
-              FinancialDay.key(t.occurredAt).isBefore(thisMonthStart))
+          .where(
+            (t) =>
+                t.type == TxType.expense &&
+                ids.contains(t.category) &&
+                FinancialDay.key(
+                  t.occurredAt,
+                ).isAfter(lastMonthStart.subtract(const Duration(days: 1))),
+          )
+          .where((t) => FinancialDay.key(t.occurredAt).isBefore(thisMonthStart))
           .fold<double>(0, (a, t) => a + t.amount);
     }
 
+    final ids = txs
+        .where((t) => t.type == TxType.expense)
+        .map((t) => t.category)
+        .toSet();
     final groups = <String, Set<String>>{
-      'Food': {'food_dining'},
-      'Transport': {'transportation'},
-      'Shopping': {'shopping'},
-      'Bills': {'bills'},
+      for (final id in ids)
+        if (sumThis({id}) > 0 || sumLast({id}) > 0)
+          Categories.resolve(context, id).name: {id},
     };
+    if (groups.isEmpty) {
+      return const Text('No expenses this month or last month.');
+    }
 
     return Column(
       children: [
@@ -245,14 +282,19 @@ class _CategoryTrendsCard extends ConsumerWidget {
                   width: 88,
                   child: Text(
                     entry.key,
-                    style: const TextStyle(
-                      color: AppColors.onSurface,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-                Expanded(child: _BarRow(thisVal: sumThis(entry.value), lastVal: sumLast(entry.value))),
+                Expanded(
+                  child: _BarRow(
+                    thisVal: sumThis(entry.value),
+                    lastVal: sumLast(entry.value),
+                  ),
+                ),
               ],
             ),
           ),
@@ -273,25 +315,44 @@ class _BarRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _bar('This', thisVal / denom, Money.format(thisVal), AppColors.primary),
+        _bar(
+          context,
+          'This',
+          thisVal / denom,
+          Money.of(context).format(thisVal),
+          Theme.of(context).colorScheme.primary,
+        ),
         const SizedBox(height: 4),
-        _bar('Last', lastVal / denom, Money.format(lastVal),
-            AppColors.onSurfaceVariant),
+        _bar(
+          context,
+          'Last',
+          lastVal / denom,
+          Money.of(context).format(lastVal),
+          Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ],
     );
   }
 
-  Widget _bar(String label, double fraction, String value, Color color) {
+  Widget _bar(
+    BuildContext context,
+    String label,
+    double fraction,
+    String value,
+    Color color,
+  ) {
     return Row(
       children: [
         SizedBox(
           width: 36,
-          child: Text(label,
-              style: const TextStyle(
-                color: AppColors.onSurfaceVariant,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-              )),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
         Expanded(
           child: ClipRRect(
@@ -299,7 +360,9 @@ class _BarRow extends StatelessWidget {
             child: LinearProgressIndicator(
               value: fraction.clamp(0.0, 1.0),
               minHeight: 8,
-              backgroundColor: AppColors.surfaceContainerHigh,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest,
               valueColor: AlwaysStoppedAnimation(color),
             ),
           ),
@@ -310,8 +373,8 @@ class _BarRow extends StatelessWidget {
           child: Text(
             value,
             textAlign: TextAlign.right,
-            style: const TextStyle(
-              color: AppColors.onSurface,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
@@ -340,8 +403,11 @@ class _CashFlowCard extends ConsumerWidget {
               expenses += d.expenses;
             }
             final saved = income - expenses;
-            final maxV = [income, expenses, saved.abs()]
-                .fold<double>(0, (a, b) => a > b ? a : b);
+            final maxV = [
+              income,
+              expenses,
+              saved.abs(),
+            ].fold<double>(0, (a, b) => a > b ? a : b);
             final denom = maxV == 0 ? 1.0 : maxV;
             return BarChart(
               BarChartData(
@@ -351,29 +417,41 @@ class _CashFlowCard extends ConsumerWidget {
                 borderData: FlBorderData(show: false),
                 titlesData: const FlTitlesData(show: false),
                 barGroups: [
-                  BarChartGroupData(x: 0, barRods: [
-                    BarChartRodData(
+                  BarChartGroupData(
+                    x: 0,
+                    barRods: [
+                      BarChartRodData(
                         toY: income / denom,
-                        color: AppColors.primary,
+                        color: Theme.of(context).colorScheme.primary,
                         width: 28,
-                        borderRadius: BorderRadius.circular(6))
-                  ]),
-                  BarChartGroupData(x: 1, barRods: [
-                    BarChartRodData(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ],
+                  ),
+                  BarChartGroupData(
+                    x: 1,
+                    barRods: [
+                      BarChartRodData(
                         toY: expenses / denom,
-                        color: AppColors.error,
+                        color: Theme.of(context).colorScheme.error,
                         width: 28,
-                        borderRadius: BorderRadius.circular(6))
-                  ]),
-                  BarChartGroupData(x: 2, barRods: [
-                    BarChartRodData(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ],
+                  ),
+                  BarChartGroupData(
+                    x: 2,
+                    barRods: [
+                      BarChartRodData(
                         toY: saved.abs() / denom,
                         color: saved >= 0
-                            ? AppColors.primary
-                            : AppColors.error,
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.error,
                         width: 28,
-                        borderRadius: BorderRadius.circular(6))
-                  ]),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             );
@@ -385,4 +463,3 @@ class _CashFlowCard extends ConsumerWidget {
     );
   }
 }
-

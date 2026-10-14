@@ -1,8 +1,6 @@
+import '../../data/models/enums.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import '../../app/router.dart';
-import '../../app/theme.dart';
 import '../../core/utils/activity_summary.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/section_card.dart';
@@ -114,9 +112,26 @@ class _CalendarTabState extends ConsumerState<CalendarTab> {
                   spacing: 14,
                   runSpacing: 8,
                   children: [
-                    Text('🟢 Income'),
-                    Text('🔴 Expense'),
-                    Text('🎯 Goal savings'),
+                    _Legend(
+                      icon: Icons.south_west,
+                      label: 'Income',
+                      color: Color(0xFF15803D),
+                    ),
+                    _Legend(
+                      icon: Icons.north_east,
+                      label: 'Expense',
+                      color: Color(0xFFEF4444),
+                    ),
+                    _Legend(
+                      icon: Icons.flag_outlined,
+                      label: 'Goal savings',
+                      color: Color(0xFFB45309),
+                    ),
+                    _Legend(
+                      icon: Icons.swap_vert,
+                      label: 'Transfer',
+                      color: Color(0xFF3B82F6),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -131,8 +146,14 @@ class _CalendarTabState extends ConsumerState<CalendarTab> {
                       Text(
                         'Tracking: ${streak.currentCount} days · Best: ${streak.bestCount} days',
                       ),
-                      const Text(
-                        'Activity follows local calendar dates. Today stays open until midnight.',
+                      const ExpansionTile(
+                        tilePadding: EdgeInsets.zero,
+                        title: Text('About calendar days'),
+                        children: [
+                          Text(
+                            'Activity follows local calendar dates. Today stays open until midnight.',
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -146,24 +167,6 @@ class _CalendarTabState extends ConsumerState<CalendarTab> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => context.push(Routes.performanceStreaks),
-                      child: const Text('Streaks'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () =>
-                          context.push(Routes.performanceAchievements),
-                      child: const Text('Achievements'),
-                    ),
-                    OutlinedButton(
-                      onPressed: () => context.push(Routes.performanceAdvanced),
-                      child: const Text('Advanced Analytics'),
-                    ),
-                  ],
-                ),
               ],
             );
           },
@@ -180,8 +183,8 @@ class _CalendarTabState extends ConsumerState<CalendarTab> {
       button: true,
       child: Material(
         color: selected
-            ? AppColors.primary.withValues(alpha: 0.2)
-            : AppColors.surfaceContainerHigh,
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.2)
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: () => setState(() => _selected = date),
@@ -198,18 +201,24 @@ class _CalendarTabState extends ConsumerState<CalendarTab> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  if (day.transactions.any((t) => t.type == TxType.transfer))
+                    const Icon(Icons.swap_horiz, color: Colors.blue, size: 11),
                   if (day.income > 0)
-                    const Icon(Icons.circle, color: AppColors.primary, size: 7),
+                    Icon(
+                      Icons.south_west,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 10,
+                    ),
                   if (day.expenses > 0)
-                    const Padding(
+                    Padding(
                       padding: EdgeInsets.symmetric(horizontal: 2),
                       child: Icon(
-                        Icons.circle,
-                        color: AppColors.error,
-                        size: 7,
+                        Icons.north_east,
+                        color: Theme.of(context).colorScheme.error,
+                        size: 10,
                       ),
                     ),
-                  if (day.saved > 0)
+                  if (day.contributions.isNotEmpty)
                     const Icon(Icons.flag, color: Colors.amber, size: 11),
                 ],
               ),
@@ -219,4 +228,20 @@ class _CalendarTabState extends ConsumerState<CalendarTab> {
       ),
     );
   }
+}
+
+class _Legend extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _Legend({required this.icon, required this.label, required this.color});
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon, size: 16, color: color),
+      const SizedBox(width: 4),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
 }

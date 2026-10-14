@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/constants/achievements.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/widgets/empty_state.dart';
@@ -42,12 +41,14 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Container(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             child: TabBar(
               controller: _tab,
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.onSurface,
-              unselectedLabelColor: AppColors.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              labelColor: Theme.of(context).colorScheme.onSurface,
+              unselectedLabelColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
               indicatorSize: TabBarIndicatorSize.label,
               labelStyle: const TextStyle(
                 fontSize: 13,
@@ -76,7 +77,9 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
             children: [
               _AchievementGrid(
                 defs: AchievementDefs.all,
-                earnedMap: {for (final e in earned) e.achievementId: e.earnedAt},
+                earnedMap: {
+                  for (final e in earned) e.achievementId: e.earnedAt,
+                },
               ),
               earnedDefs.isEmpty
                   ? const EmptyState(
@@ -87,13 +90,11 @@ class _AchievementsScreenState extends ConsumerState<AchievementsScreen>
                     )
                   : _AchievementGrid(
                       defs: earnedDefs,
-                      earnedMap:
-                          {for (final e in earned) e.achievementId: e.earnedAt},
+                      earnedMap: {
+                        for (final e in earned) e.achievementId: e.earnedAt,
+                      },
                     ),
-              _AchievementGrid(
-                defs: lockedDefs,
-                earnedMap: const {},
-              ),
+              _AchievementGrid(defs: lockedDefs, earnedMap: const {}),
             ],
           );
         },
@@ -148,7 +149,9 @@ class _AchievementTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = earned ? def.color : AppColors.onSurfaceVariant;
+    final color = earned
+        ? def.color
+        : Theme.of(context).colorScheme.onSurfaceVariant;
     return SectionCard(
       padding: EdgeInsets.zero,
       child: Padding(
@@ -163,8 +166,13 @@ class _AchievementTile extends StatelessWidget {
                 color: color.withValues(alpha: earned ? 0.18 : 0.08),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(def.icon,
-                  color: earned ? color : AppColors.onSurfaceMuted, size: 22),
+              child: Icon(
+                def.icon,
+                color: earned
+                    ? color
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 22,
+              ),
             ),
             const SizedBox(height: 10),
             Text(
@@ -172,7 +180,9 @@ class _AchievementTile extends StatelessWidget {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: earned ? AppColors.onSurface : AppColors.onSurfaceMuted,
+                color: earned
+                    ? Theme.of(context).colorScheme.onSurface
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 height: 1.2,
@@ -183,19 +193,19 @@ class _AchievementTile extends StatelessWidget {
               def.description,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.onSurfaceVariant,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 11,
                 height: 1.3,
               ),
             ),
             const Spacer(),
             Text(
-              earned
-                  ? 'Earned ${D.shortDate(earnedAt!)}'
-                  : 'Locked',
+              earned ? 'Earned ${D.shortDate(earnedAt!)}' : 'Locked',
               style: TextStyle(
-                color: earned ? def.color : AppColors.onSurfaceMuted,
+                color: earned
+                    ? def.color
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),

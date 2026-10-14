@@ -1,3 +1,4 @@
+import '../../core/utils/money_amount.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/database.dart';
@@ -14,8 +15,10 @@ class BudgetRepo {
   BudgetRepo(this.db, {this.logger});
 
   Future<List<BudgetRecord>> all() async {
-    final rows = await (await db.database)
-        .query('budgets', orderBy: 'category ASC, id ASC');
+    final rows = await (await db.database).query(
+      'budgets',
+      orderBy: 'category ASC, id ASC',
+    );
     return rows.map(BudgetRecord.fromRow).toList();
   }
 
@@ -23,7 +26,8 @@ class BudgetRepo {
   /// - `monthKey = 'YYYY-MM'` matches exactly that month.
   /// - `monthKey = NULL` matches every month (rolling).
   Future<List<BudgetRecord>> forMonth(DateTime anchor) async {
-    final monthKey = '${anchor.year.toString().padLeft(4, '0')}'
+    final monthKey =
+        '${anchor.year.toString().padLeft(4, '0')}'
         '-${anchor.month.toString().padLeft(2, '0')}';
     final rows = await (await db.database).query(
       'budgets',
@@ -35,12 +39,14 @@ class BudgetRepo {
   }
 
   Future<int> insert(BudgetRecord b) async {
+    MoneyAmount.require(b.amount);
     logger?.info('Inserting budget for ${b.category}');
     final row = Map<String, Object?>.from(b.toRow())..remove('id');
     return (await db.database).insert('budgets', row);
   }
 
   Future<void> update(BudgetRecord b) async {
+    MoneyAmount.require(b.amount);
     logger?.info('Updating budget ${b.id} for ${b.category}');
     await (await db.database).update(
       'budgets',
@@ -52,8 +58,11 @@ class BudgetRepo {
 
   Future<void> delete(int id) async {
     logger?.info('Deleting budget $id');
-    await (await db.database)
-        .delete('budgets', where: 'id = ?', whereArgs: [id]);
+    await (await db.database).delete(
+      'budgets',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   /// Sum of expenses per category for the given month. Returned as a map of

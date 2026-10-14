@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../app/theme.dart';
 import '../../../core/widgets/section_card.dart';
 import '../providers/home_providers.dart';
 
@@ -26,7 +25,9 @@ class SmartInsightsList extends ConsumerWidget {
               child: Text(
                 'No insights yet — keep logging your activity and we will surface trends here.',
                 style: TextStyle(
-                  color: AppColors.onSurfaceVariant.withValues(alpha: 0.9),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
                   fontSize: 12.5,
                   height: 1.4,
                 ),
@@ -52,7 +53,9 @@ class SmartInsightsList extends ConsumerWidget {
                         gradient: LinearGradient(
                           colors: [
                             Colors.transparent,
-                            AppColors.outline.withValues(alpha: 0.5),
+                            Theme.of(
+                              context,
+                            ).colorScheme.outline.withValues(alpha: 0.5),
                             Colors.transparent,
                           ],
                         ),
@@ -95,8 +98,8 @@ class _InsightRow extends StatelessWidget {
           Expanded(
             child: Text(
               insight.message,
-              style: const TextStyle(
-                color: AppColors.onSurface,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
                 height: 1.35,
@@ -104,8 +107,11 @@ class _InsightRow extends StatelessWidget {
               ),
             ),
           ),
-          const Icon(Icons.chevron_right_rounded,
-              color: AppColors.onSurfaceVariant, size: 16),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            size: 16,
+          ),
         ],
       ),
     );

@@ -1,8 +1,9 @@
+import '../../core/widgets/app_ui.dart';
+import 'widgets/category_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/theme.dart';
 import '../../core/constants/categories.dart';
 import '../../core/utils/date_utils.dart';
 
@@ -31,13 +32,22 @@ class TransactionDetailScreen extends ConsumerWidget {
               if (tx == null) return const SizedBox.shrink();
               return Row(
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined),
-                    onPressed: () => _editTx(context, ref, tx),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _confirmDelete(context, ref, tx),
+                  if (tx.type != TxType.transfer)
+                    AsyncAction(
+                      action: () => _editTx(context, ref, tx),
+                      builder: (busy, run) => IconButton(
+                        tooltip: 'Edit transaction',
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: busy ? null : run,
+                      ),
+                    ),
+                  AsyncAction(
+                    action: () => _confirmDelete(context, ref, tx),
+                    builder: (busy, run) => IconButton(
+                      tooltip: 'Delete transaction',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: busy ? null : run,
+                    ),
                   ),
                 ],
               );
@@ -64,7 +74,7 @@ class TransactionDetailScreen extends ConsumerWidget {
     final newTx = await showModalBottomSheet<TxRecord>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -72,7 +82,18 @@ class TransactionDetailScreen extends ConsumerWidget {
     );
     if (newTx == null) return;
     final old = tx;
-    await ref.read(transactionsProvider.notifier).edit(old, newTx);
+    try {
+      await ref.read(transactionsProvider.notifier).edit(old, newTx);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not update transaction. Please try again.'),
+          ),
+        );
+      }
+      return;
+    }
     if (context.mounted) {
       ScaffoldMessenger.of(
         context,
@@ -88,16 +109,22 @@ class TransactionDetailScreen extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surfaceContainer,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
         title: const Text('Delete transaction?'),
-        content: const Text('This will recalculate that day\'s performance.'),
+        content: Text(
+          tx.type == TxType.transfer
+              ? 'Reverse this transfer in both accounts? The receiving account must still have enough money.'
+              : 'This reverses the balance change and updates your totals.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -106,7 +133,20 @@ class TransactionDetailScreen extends ConsumerWidget {
     );
     if (ok != true || tx.id == null) return;
 
-    await ref.read(transactionsProvider.notifier).remove(tx.id!);
+    try {
+      await ref.read(transactionsProvider.notifier).remove(tx.id!);
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not reverse this transaction. Check available funds.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     if (context.mounted) {
       context.pop();
       ScaffoldMessenger.of(
@@ -122,15 +162,22 @@ class _DetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cat = Categories.byId(tx.category);
+    final cat = Categories.resolve(context, tx.category);
     final isIncome = tx.type == TxType.income;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (tx.type == TxType.transfer)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+              '${tx.account} → ${tx.destinationAccount}\nTransfers move money between your accounts without changing income or expenses. Delete to reverse both sides, then record a replacement if needed.',
+            ),
+          ),
         Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: AppColors.surfaceContainer,
+            color: Theme.of(context).colorScheme.surfaceContainer,
             borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
@@ -146,18 +193,26 @@ class _DetailBody extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                cat.name,
-                style: const TextStyle(
-                  color: AppColors.onSurface,
+                tx.type == TxType.transfer ? 'Transfer' : cat.name,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
-                '${isIncome ? '+' : '-'}${Money.format(tx.amount)}',
+                '${tx.type == TxType.transfer
+                    ? '↔ '
+                    : isIncome
+                    ? '+'
+                    : '-'}${Money.of(context).format(tx.amount)}',
                 style: TextStyle(
-                  color: isIncome ? AppColors.primary : AppColors.error,
+                  color: tx.type == TxType.transfer
+                      ? const Color(0xFF3B82F6)
+                      : isIncome
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.error,
                   fontSize: 32,
                   fontWeight: FontWeight.w700,
                 ),
@@ -166,7 +221,7 @@ class _DetailBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        _DetailRow(label: 'Type', value: isIncome ? 'Income' : 'Expense'),
+        _DetailRow(label: 'Type', value: tx.type.label),
         _DetailRow(label: 'Category', value: cat.name),
         _DetailRow(label: 'Account', value: tx.account),
         _DetailRow(label: 'Date', value: D.fullDate(tx.occurredAt)),
@@ -188,15 +243,15 @@ class _DetailRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainer,
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: AppColors.onSurfaceVariant,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -206,8 +261,8 @@ class _DetailRow extends StatelessWidget {
             child: Text(
               value,
               textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: AppColors.onSurface,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
@@ -256,10 +311,18 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
 
   void _save() {
     final amount = double.tryParse(_amountCtrl.text.trim());
-    if (amount == null || !amount.isFinite || amount <= 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Invalid amount')));
+    if (amount == null ||
+        !amount.isFinite ||
+        amount <= 0 ||
+        amount > 999999999.99 ||
+        (amount * 100 - (amount * 100).round()).abs() > .00001) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Enter a positive amount with at most two decimal places',
+          ),
+        ),
+      );
       return;
     }
     Navigator.pop(
@@ -277,84 +340,67 @@ class _EditTransactionSheetState extends State<_EditTransactionSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final list = widget.tx.type == TxType.income
-        ? Categories.income
-        : Categories.expense;
     return Padding(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.onSurfaceMuted,
-                  borderRadius: BorderRadius.circular(2),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
-            ),
-            const Text(
-              'Edit Transaction',
-              style: TextStyle(
-                color: AppColors.onSurface,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+              Text(
+                'Edit Transaction',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              const SizedBox(height: 16),
+              TextField(
+                controller: _amountCtrl,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(labelText: 'Amount'),
               ),
-              decoration: const InputDecoration(labelText: 'Amount'),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              initialValue: _categoryId,
-              decoration: const InputDecoration(labelText: 'Category'),
-              dropdownColor: AppColors.surfaceContainerHigh,
-              items: [
-                for (final c in list)
-                  DropdownMenuItem(
-                    value: c.id,
-                    child: Row(
-                      children: [
-                        Icon(c.icon, color: c.color, size: 18),
-                        const SizedBox(width: 8),
-                        Text(c.name),
-                      ],
-                    ),
-                  ),
-              ],
-              onChanged: (v) {
-                if (v != null) setState(() => _categoryId = v);
-              },
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _notesCtrl,
-              maxLines: 2,
-              decoration: const InputDecoration(labelText: 'Notes'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _tagsCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tags (comma separated)',
+              const SizedBox(height: 12),
+              CategoryPicker(
+                kind: widget.tx.type.name,
+                selected: _categoryId,
+                onChanged: (id) => setState(() => _categoryId = id),
               ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: _save, child: const Text('Save Changes')),
-          ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _notesCtrl,
+                maxLines: 2,
+                decoration: const InputDecoration(labelText: 'Notes'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _tagsCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Tags (comma separated)',
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: _save, child: const Text('Save Changes')),
+            ],
+          ),
         ),
       ),
     );

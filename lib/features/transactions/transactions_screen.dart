@@ -3,18 +3,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
-import '../../app/theme.dart';
+import '../../core/widgets/app_ui.dart';
 import '../../providers.dart';
 import 'widgets/quick_add_form.dart';
 import 'widgets/transaction_list.dart';
 
 /// Main Transactions tab with Quick Add and History sub-tabs.
 class TransactionsScreen extends ConsumerStatefulWidget {
-  const TransactionsScreen({super.key});
+  final bool showHistory;
+  const TransactionsScreen({super.key, this.showHistory = false});
 
   @override
-  ConsumerState<TransactionsScreen> createState() =>
-      _TransactionsScreenState();
+  ConsumerState<TransactionsScreen> createState() => _TransactionsScreenState();
 }
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen>
@@ -24,7 +24,19 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
+    _tab = TabController(
+      length: 2,
+      initialIndex: widget.showHistory ? 1 : 0,
+      vsync: this,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.showHistory != oldWidget.showHistory) {
+      _tab.index = widget.showHistory ? 1 : 0;
+    }
   }
 
   @override
@@ -44,17 +56,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen>
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Container(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             child: TabBar(
               controller: _tab,
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.onSurface,
-              unselectedLabelColor: AppColors.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              labelColor: Theme.of(context).colorScheme.onSurface,
+              unselectedLabelColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
               indicatorSize: TabBarIndicatorSize.label,
-              labelStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              labelStyle: Theme.of(context).textTheme.labelLarge,
               tabs: const [
                 Tab(text: 'Quick Add'),
                 Tab(text: 'History'),
@@ -72,8 +83,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen>
               accounts: accounts,
               onSaved: () => _tab.animateTo(1),
             ),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
+            loading: () => const LoadingPlaceholder(lines: 4),
+            error: (_, __) => InlineNotice(
+              message:
+                  'Could not load accounts. Your saved data has not been changed.',
+              actionLabel: 'Try again',
+              onAction: () => ref.invalidate(accountsProvider),
+            ),
           ),
           // History
           txsAsync.when(
@@ -85,8 +101,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen>
                 }
               },
             ),
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
+            loading: () => const LoadingPlaceholder(lines: 4),
+            error: (_, __) => InlineNotice(
+              message:
+                  'Could not load transactions. Your saved data has not been changed.',
+              actionLabel: 'Try again',
+              onAction: () => ref.invalidate(transactionsProvider),
+            ),
           ),
         ],
       ),

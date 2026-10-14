@@ -1,36 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    MoneyFlow launcher foreground. A stylised savings arrow + coin glyph in
-    the brand green, sized to the Android 8.0+ adaptive-icon safe zone
-    (66dp of the inner 72dp viewport). The 18dp gutter on each side stops
-    the icon being clipped when masked to a circle / squircle / teardrop.
--->
+<!-- MoneyFlow coin and savings pocket, within the adaptive icon safe region. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- Inner safe-zone group (66dp centred inside 108dp viewport) -->
-    <group
-        android:scaleX="0.61"
-        android:scaleY="0.61"
-        android:translateX="21"
-        android:translateY="21">
-
-        <!-- Outer coin ring -->
-        <path
-            android:fillColor="@color/moneyflow_primary"
-            android:pathData="M54,4 A50,50 0 1 1 54,104 A50,50 0 1 1 54,4 Z M54,16 A38,38 0 1 0 54,92 A38,38 0 1 0 54,16 Z" />
-
-        <!-- Upward arrow body -->
-        <path
-            android:fillColor="#FFFFFFFF"
-            android:pathData="M54,30 L72,52 L62,52 L62,72 L46,72 L46,52 L36,52 Z" />
-
-        <!-- Coin slot mark -->
-        <path
-            android:fillColor="@color/moneyflow_primary"
-            android:pathData="M28,56 L80,56 L80,62 L28,62 Z" />
-    </group>
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#22C55E"
+        android:pathData="M54,26 A10,10 0,1 1,54 46 A10,10 0,1 1,54 26 Z" />
+    <path android:fillColor="#22C55E"
+        android:pathData="M34,40.5 Q31.5,40.5 31.5,43 L31.5,68 Q31.5,82 45.5,82 L62.5,82 Q76.5,82 76.5,68 L76.5,43 Q76.5,40.5 74,40.5 L73,40.5 Q72,40.5 71,41.2 L61.5,47.6 Q60.5,48.3 60.5,49.5 L60.5,66.5 Q60.5,69.5 57.5,69.5 L50.5,69.5 Q47.5,69.5 47.5,66.5 L47.5,49.5 Q47.5,48.3 46.5,47.6 L37,41.2 Q36,40.5 35,40.5 Z" />
 </vector>

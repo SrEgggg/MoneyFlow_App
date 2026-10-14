@@ -158,7 +158,7 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: AppColors.surfaceContainer,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
         title: const Text('Delete rule?'),
         content: const Text(
           'Removes the rule. Past transactions it created stay in your history.',
@@ -170,9 +170,9 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text(
+            child: Text(
               'Delete',
-              style: TextStyle(color: AppColors.error),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
         ],
@@ -232,9 +232,11 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
   Widget build(BuildContext context) {
     final insets = MediaQuery.of(context).viewInsets;
     final editing = widget.existing != null;
-    final categories = _type == TxType.income
-        ? Categories.income
-        : Categories.expense;
+    final categories = Categories.available(
+      context,
+      _type.name,
+      selected: _categoryId,
+    );
     if (!categories.any((c) => c.id == _categoryId)) {
       _categoryId = categories.first.id;
     }
@@ -251,7 +253,7 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.outline,
+                  color: Theme.of(context).colorScheme.outline,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -259,8 +261,8 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
             const SizedBox(height: 14),
             Text(
               editing ? 'Edit recurring rule' : 'New recurring rule',
-              style: const TextStyle(
-                color: AppColors.onSurface,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.2,
@@ -273,10 +275,10 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
             TextField(
               controller: _nameCtrl,
               textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'e.g. Salary, Netflix, Rent',
               ),
-              style: const TextStyle(color: AppColors.onSurface),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
@@ -286,7 +288,7 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
             Container(
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: AppColors.surfaceContainerHigh,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
@@ -295,7 +297,7 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                     label: 'Income',
                     icon: Icons.arrow_upward,
                     active: _type == TxType.income,
-                    color: AppColors.primary,
+                    color: Theme.of(context).colorScheme.primary,
                     onTap: () => setState(() {
                       _type = TxType.income;
                       _categoryId = Categories.income.first.id;
@@ -305,7 +307,7 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                     label: 'Expense',
                     icon: Icons.arrow_downward,
                     active: _type == TxType.expense,
-                    color: AppColors.error,
+                    color: Theme.of(context).colorScheme.error,
                     onTap: () => setState(() {
                       _type = TxType.expense;
                       _categoryId = Categories.expense.first.id;
@@ -326,12 +328,15 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
               ],
-              style: const TextStyle(color: AppColors.onSurface, fontSize: 18),
-              decoration: const InputDecoration(
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: 18,
+              ),
+              decoration: InputDecoration(
                 hintText: '0',
-                prefixText: '₱ ',
+                prefixText: '${Money.of(context).symbol} ',
                 prefixStyle: TextStyle(
-                  color: AppColors.onSurfaceVariant,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                 ),
@@ -346,14 +351,18 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
               height: 40,
               child: DropdownButtonFormField<String>(
                 initialValue: _categoryId,
-                dropdownColor: AppColors.surfaceContainerHigh,
+                dropdownColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
                   filled: true,
-                  fillColor: AppColors.surfaceContainerHigh,
+                  fillColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
                 ),
                 items: [
                   for (final c in categories)
@@ -365,7 +374,9 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                           const SizedBox(width: 8),
                           Text(
                             c.name,
-                            style: const TextStyle(color: AppColors.onSurface),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           ),
                         ],
                       ),
@@ -384,14 +395,18 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
               height: 40,
               child: DropdownButtonFormField<String>(
                 initialValue: _accountId,
-                dropdownColor: AppColors.surfaceContainerHigh,
+                dropdownColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
                 decoration: InputDecoration(
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
                   ),
                   filled: true,
-                  fillColor: AppColors.surfaceContainerHigh,
+                  fillColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest,
                 ),
                 items: [
                   for (final a in widget.accounts)
@@ -399,7 +414,9 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                       value: a.name,
                       child: Text(
                         a.name,
-                        style: const TextStyle(color: AppColors.onSurface),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
                       ),
                     ),
                 ],
@@ -418,14 +435,18 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                   flex: 3,
                   child: DropdownButtonFormField<RecurringFrequency>(
                     initialValue: _frequency,
-                    dropdownColor: AppColors.surfaceContainerHigh,
+                    dropdownColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     decoration: InputDecoration(
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 12,
                         vertical: 8,
                       ),
                       filled: true,
-                      fillColor: AppColors.surfaceContainerHigh,
+                      fillColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                     ),
                     items: [
                       for (final f in RecurringFrequency.values)
@@ -433,7 +454,9 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                           value: f,
                           child: Text(
                             f.label,
-                            style: const TextStyle(color: AppColors.onSurface),
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
                           ),
                         ),
                     ],
@@ -449,8 +472,10 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                     controller: _intervalCtrl,
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: const TextStyle(color: AppColors.onSurface),
-                    decoration: const InputDecoration(hintText: '1'),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    decoration: InputDecoration(hintText: '1'),
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
@@ -489,7 +514,7 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
               controller: _notesCtrl,
               maxLines: 2,
               maxLength: 200,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 hintText: 'Add a note…',
                 counterText: '',
               ),
@@ -499,7 +524,10 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
               const SizedBox(height: 8),
               Text(
                 _error!,
-                style: const TextStyle(color: AppColors.error, fontSize: 12),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
               ),
             ],
             const SizedBox(height: 20),
@@ -508,9 +536,9 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                 if (editing)
                   IconButton(
                     onPressed: _saving ? null : _delete,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.delete_outline,
-                      color: AppColors.error,
+                      color: Theme.of(context).colorScheme.error,
                     ),
                     tooltip: 'Delete',
                   ),
@@ -521,7 +549,7 @@ class _RecurringFormState extends ConsumerState<RecurringForm> {
                       widget.existing!.isActive
                           ? Icons.pause_rounded
                           : Icons.play_arrow_rounded,
-                      color: AppColors.primary,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     tooltip: widget.existing!.isActive
                         ? 'Pause rule'
@@ -569,8 +597,8 @@ class _Label extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6, left: 2),
       child: Text(
         text,
-        style: const TextStyle(
-          color: AppColors.onSurfaceVariant,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontSize: 11,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.4,
@@ -611,14 +639,18 @@ class _MiniToggle extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                color: active ? color : AppColors.onSurfaceVariant,
+                color: active
+                    ? color
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 size: 16,
               ),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
-                  color: active ? color : AppColors.onSurfaceVariant,
+                  color: active
+                      ? color
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -651,8 +683,8 @@ class _DateField extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 6, left: 2),
           child: Text(
             label,
-            style: const TextStyle(
-              color: AppColors.onSurfaceVariant,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 11,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.4,
@@ -665,22 +697,22 @@ class _DateField extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.surfaceContainerHigh,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.calendar_today_rounded,
                   size: 14,
-                  color: AppColors.onSurfaceVariant,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     value,
-                    style: const TextStyle(
-                      color: AppColors.onSurface,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
@@ -691,10 +723,10 @@ class _DateField extends StatelessWidget {
                 if (onClear != null)
                   GestureDetector(
                     onTap: onClear,
-                    child: const Icon(
+                    child: Icon(
                       Icons.close,
                       size: 14,
-                      color: AppColors.onSurfaceVariant,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
               ],

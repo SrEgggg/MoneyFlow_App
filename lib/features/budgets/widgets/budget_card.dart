@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
 import '../../../core/constants/categories.dart';
 import '../../../core/utils/money.dart';
 import '../../../data/models/budget.dart';
@@ -21,19 +20,19 @@ class BudgetCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final category = Categories.byId(budget.category);
+    final category = Categories.resolve(context, budget.category);
     final pct = budget.amount > 0 ? (spent / budget.amount) : 0.0;
     final over = spent > budget.amount;
     final warning = pct >= 0.85 && !over;
     final color = over
-        ? AppColors.error
+        ? Theme.of(context).colorScheme.error
         : warning
-            ? const Color(0xFFEAB308)
-            : category.color;
+        ? const Color(0xFFEAB308)
+        : category.color;
     final remaining = budget.amount - spent;
 
     return Material(
-      color: AppColors.surfaceContainer,
+      color: Theme.of(context).colorScheme.surfaceContainer,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -61,8 +60,8 @@ class BudgetCard extends StatelessWidget {
                       children: [
                         Text(
                           category.name,
-                          style: const TextStyle(
-                            color: AppColors.onSurface,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
@@ -71,9 +70,11 @@ class BudgetCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '${Money.format(spent)} / ${Money.format(budget.amount)}',
+                          '${Money.of(context).format(spent)} / ${Money.of(context).format(budget.amount)}',
                           style: TextStyle(
-                            color: AppColors.onSurfaceVariant,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -84,15 +85,19 @@ class BudgetCard extends StatelessWidget {
                   if (over)
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: AppColors.error.withValues(alpha: 0.18),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.error.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Over',
                         style: TextStyle(
-                          color: AppColors.error,
+                          color: Theme.of(context).colorScheme.error,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
@@ -100,9 +105,9 @@ class BudgetCard extends StatelessWidget {
                     )
                   else
                     Text(
-                      '${Money.format(remaining.abs())} left',
-                      style: const TextStyle(
-                        color: AppColors.onSurfaceVariant,
+                      '${Money.of(context).format(remaining.abs())} left',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -116,7 +121,11 @@ class BudgetCard extends StatelessWidget {
                   height: 6,
                   child: Stack(
                     children: [
-                      Container(color: AppColors.surfaceContainerHigh),
+                      Container(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
+                      ),
                       FractionallySizedBox(
                         widthFactor: pct.clamp(0.0, 1.0),
                         child: Container(

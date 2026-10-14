@@ -1,3 +1,4 @@
+import '../../core/utils/money_amount.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../database/database.dart';
@@ -32,6 +33,7 @@ class RecurringRepo {
   }
 
   void _validate(RecurringTransactionRecord r) {
+    MoneyAmount.require(r.amount);
     if (r.name.trim().isEmpty ||
         !r.amount.isFinite ||
         r.amount <= 0 ||

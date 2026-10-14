@@ -1,3 +1,5 @@
+import '../../core/utils/goal_photo_data.dart';
+import '../../core/utils/money_amount.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -51,8 +53,10 @@ class SettingsNotifier extends AsyncNotifier<SettingsRecord> {
       throw ArgumentError('Display name is required');
     }
     final repo = ref.read(settingsRepoProvider);
+    final previous = state.valueOrNull;
     await repo.save(r);
     state = AsyncData(r);
+    if (previous?.cutoffHour != r.cutoffHour) await refreshDerivedData(ref);
   }
 }
 
@@ -88,11 +92,44 @@ class AccountRepo {
   }
 
   Future<int> insert(AccountRecord r) async {
+    MoneyAmount.require(r.balance, signed: true);
+    if (r.name.trim().isEmpty) throw ArgumentError('Account name is required');
     final row = Map<String, Object?>.from(r.toRow())..remove('id');
-    return (await db.database).insert('accounts', row);
+    row['name'] = r.name.trim();
+    return (await db.database).transaction((txn) async {
+      final accounts = await txn.query('accounts', columns: ['name']);
+      if (accounts.any(
+        (a) =>
+            (a['name'] as String).trim().toLowerCase() ==
+            r.name.trim().toLowerCase(),
+      )) {
+        throw StateError('Account names must be unique');
+      }
+      return txn.insert('accounts', row);
+    });
   }
 
-  Future<void> update(AccountRecord r) async {
+  Future<bool> hasLinkedRecords(String name) async {
+    final database = await db.database;
+    final tx = await database.query(
+      'transactions',
+      columns: ['id'],
+      where: 'account = ? OR destination_account = ?',
+      whereArgs: [name, name],
+      limit: 1,
+    );
+    final rules = await database.query(
+      'recurring_transactions',
+      columns: ['id'],
+      where: 'account = ?',
+      whereArgs: [name],
+      limit: 1,
+    );
+    return tx.isNotEmpty || rules.isNotEmpty;
+  }
+
+  Future<void> update(AccountRecord r, {double? expectedBalance}) async {
+    MoneyAmount.require(r.balance, signed: true);
     if (r.name.trim().isEmpty || !r.balance.isFinite) {
       throw ArgumentError('Enter a valid account name and balance');
     }
@@ -103,29 +140,61 @@ class AccountRepo {
         whereArgs: [r.id],
       );
       if (old.isEmpty) throw StateError('Account no longer exists');
-      final duplicates = await txn.query(
+      final liveBalance = (old.single['balance'] as num).toDouble();
+      if (expectedBalance != null &&
+          r.balance != expectedBalance &&
+          liveBalance != expectedBalance) {
+        throw StateError(
+          'The balance changed while editing. Reopen the account before correcting it.',
+        );
+      }
+      final others = await txn.query(
         'accounts',
-        where: 'name = ? AND id != ?',
-        whereArgs: [r.name, r.id],
+        where: 'id != ?',
+        whereArgs: [r.id],
       );
-      if (duplicates.isNotEmpty) {
+      if (others.any(
+        (a) =>
+            (a['name'] as String).trim().toLowerCase() ==
+            r.name.trim().toLowerCase(),
+      )) {
         throw StateError('Account names must be unique');
       }
-      await txn.update(
-        'transactions',
-        {'account': r.name},
-        where: 'account = ?',
+      final sameOldName = await txn.query(
+        'accounts',
+        where: 'name = ?',
         whereArgs: [old.single['name']],
       );
-      await txn.update(
-        'recurring_transactions',
-        {'account': r.name},
-        where: 'account = ?',
-        whereArgs: [old.single['name']],
-      );
+      // Legacy duplicates cannot be attributed retrospectively. Keep historical
+      // references on the original name until the remaining account is renamed.
+      if (sameOldName.length == 1) {
+        await txn.update(
+          'transactions',
+          {'account': r.name.trim()},
+          where: 'account = ?',
+          whereArgs: [old.single['name']],
+        );
+        await txn.update(
+          'transactions',
+          {'destination_account': r.name.trim()},
+          where: 'destination_account = ?',
+          whereArgs: [old.single['name']],
+        );
+        await txn.update(
+          'recurring_transactions',
+          {'account': r.name.trim()},
+          where: 'account = ?',
+          whereArgs: [old.single['name']],
+        );
+      }
       await txn.update(
         'accounts',
-        r.toRow(),
+        r.toRow()
+          ..['name'] = r.name.trim()
+          ..['balance'] =
+              expectedBalance != null && r.balance == expectedBalance
+              ? liveBalance
+              : r.balance,
         where: 'id = ?',
         whereArgs: [r.id],
       );
@@ -139,13 +208,17 @@ class AccountRepo {
       for (final table in ['transactions', 'recurring_transactions']) {
         final linked = await txn.query(
           table,
-          where: 'account = ?',
-          whereArgs: [old.single['name']],
+          where: table == 'transactions'
+              ? 'account = ? OR destination_account = ?'
+              : 'account = ?',
+          whereArgs: table == 'transactions'
+              ? [old.single['name'], old.single['name']]
+              : [old.single['name']],
           limit: 1,
         );
         if (linked.isNotEmpty) {
           throw StateError(
-            'Move or remove linked transactions and recurring rules before deleting this account',
+            'This account has linked transactions or recurring rules and cannot be deleted. Your history has been kept.',
           );
         }
       }
@@ -172,9 +245,9 @@ class AccountsNotifier extends AsyncNotifier<List<AccountRecord>> {
     await refresh();
   }
 
-  Future<void> edit(AccountRecord a) async {
+  Future<void> edit(AccountRecord a, {double? expectedBalance}) async {
     final repo = ref.read(accountRepoProvider);
-    await repo.update(a);
+    await repo.update(a, expectedBalance: expectedBalance);
     ref.invalidate(transactionsProvider);
     ref.invalidate(recurringProvider);
     await refresh();
@@ -215,10 +288,62 @@ class TransactionRepo {
     TxRecord tx,
     double direction,
   ) async {
-    if (!tx.amount.isFinite || tx.amount <= 0) {
-      throw ArgumentError('Enter a finite positive amount');
+    MoneyAmount.require(tx.amount);
+    if (tx.type == TxType.transfer) {
+      final destination = tx.destinationAccount;
+      if (destination == null || destination == tx.account) {
+        throw ArgumentError('Choose two different accounts.');
+      }
+      final source = direction > 0 ? tx.account : destination;
+      final target = direction > 0 ? destination : tx.account;
+      final targets = await txn.query(
+        'accounts',
+        where: 'name = ?',
+        whereArgs: [target],
+      );
+      if (targets.length != 1) {
+        throw StateError('Choose two uniquely named accounts.');
+      }
+      MoneyAmount.require(
+        MoneyAmount.round((targets.single['balance'] as num) + tx.amount),
+        signed: true,
+      );
+      final rows = await txn.query(
+        'accounts',
+        where: 'name = ?',
+        whereArgs: [source],
+      );
+      if (rows.length != 1 ||
+          (rows.single['balance'] as num).toDouble() + 0.000001 < tx.amount) {
+        throw StateError('Insufficient available balance.');
+      }
+      MoneyAmount.require(rows.single['balance'] as num, signed: true);
+      final debited = await txn.rawUpdate(
+        'UPDATE accounts SET balance = ROUND(balance - ?, 2) WHERE name = ?',
+        [tx.amount, source],
+      );
+      final credited = await txn.rawUpdate(
+        'UPDATE accounts SET balance = ROUND(balance + ?, 2) WHERE name = ?',
+        [tx.amount, target],
+      );
+      if (debited != 1 || credited != 1) {
+        throw StateError('Choose two existing accounts.');
+      }
+      return;
     }
     final delta = tx.amount * (tx.type == TxType.income ? 1 : -1) * direction;
+    final accounts = await txn.query(
+      'accounts',
+      where: 'name = ?',
+      whereArgs: [tx.account],
+    );
+    if (accounts.length != 1) {
+      throw StateError('Rename duplicate accounts before recording money.');
+    }
+    MoneyAmount.require(
+      MoneyAmount.round((accounts.single['balance'] as num) + delta),
+      signed: true,
+    );
     final changed = await txn.rawUpdate(
       'UPDATE accounts SET balance = ROUND(balance + ?, 2) WHERE name = ?',
       [delta, tx.account],
@@ -242,6 +367,23 @@ class TransactionRepo {
     return txn.insert('transactions', row);
   }
 
+  Future<int> moveMoney(TxRecord tx) async {
+    return (await db.database).transaction((txn) async {
+      if (tx.type == TxType.expense) {
+        final rows = await txn.query(
+          'accounts',
+          where: 'name = ?',
+          whereArgs: [tx.account],
+        );
+        if (rows.length != 1 ||
+            (rows.single['balance'] as num).toDouble() + 0.000001 < tx.amount) {
+          throw StateError('Insufficient available balance.');
+        }
+      }
+      return insertInTransaction(txn, tx);
+    });
+  }
+
   Future<void> update(TxRecord tx) async {
     await (await db.database).transaction((txn) async {
       final rows = await txn.query(
@@ -252,6 +394,12 @@ class TransactionRepo {
       if (rows.isEmpty) throw StateError('Transaction no longer exists');
       await _adjustBalance(txn, TxRecord.fromRow(rows.single), -1);
       await _adjustBalance(txn, tx, 1);
+      await txn.insert('transaction_revisions', {
+        'transaction_id': tx.id,
+        'old_values': jsonEncode(rows.single),
+        'new_values': jsonEncode(tx.toRow()),
+        'changed_at': DateTime.now().toIso8601String(),
+      });
       await txn.update(
         'transactions',
         tx.toRow(),
@@ -274,6 +422,43 @@ class TransactionRepo {
     });
   }
 
+  /// Undo only the exact entry just saved; never erase a later edit.
+  Future<void> undoAdded(TxRecord expected) async {
+    await (await db.database).transaction((txn) async {
+      final rows = await txn.query(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [expected.id],
+      );
+      if (rows.isEmpty ||
+          jsonEncode(TxRecord.fromRow(rows.single).toRow()) !=
+              jsonEncode(expected.toRow())) {
+        throw StateError(
+          'This entry changed or was already removed. Review it in History.',
+        );
+      }
+      if (expected.type == TxType.income) {
+        final accounts = await txn.query(
+          'accounts',
+          where: 'name = ?',
+          whereArgs: [expected.account],
+        );
+        if (accounts.length != 1 ||
+            (accounts.single['balance'] as num) + .000001 < expected.amount) {
+          throw StateError(
+            'This income has already been used. Review the account before undoing.',
+          );
+        }
+      }
+      await _adjustBalance(txn, expected, -1);
+      await txn.delete(
+        'transactions',
+        where: 'id = ?',
+        whereArgs: [expected.id],
+      );
+    });
+  }
+
   Future<List<TxRecord>> range(DateTime from, DateTime to) async {
     final rows = await (await db.database).query(
       'transactions',
@@ -283,78 +468,93 @@ class TransactionRepo {
     );
     return rows.map(TxRecord.fromRow).toList();
   }
-
-  /// Audit-trail: append a revision before mutating a transaction.
-  Future<void> writeRevision(int txId, TxRecord old, TxRecord new_) async {
-    await (await db.database).insert('transaction_revisions', {
-      'transaction_id': txId,
-      'old_values': jsonEncode(old.toRow()),
-      'new_values': jsonEncode(new_.toRow()),
-      'changed_at': DateTime.now().toIso8601String(),
-    });
-  }
 }
 
 class TransactionsNotifier extends AsyncNotifier<List<TxRecord>> {
+  final _requests = Expando<Future<int>>();
   @override
-  Future<List<TxRecord>> build() async {
-    final repo = ref.watch(transactionRepoProvider);
-    return repo.all();
-  }
-
+  Future<List<TxRecord>> build() => ref.watch(transactionRepoProvider).all();
   Future<void> refresh() async {
-    final repo = ref.read(transactionRepoProvider);
-    state = AsyncData(await repo.all());
+    state = AsyncData(await ref.read(transactionRepoProvider).all());
   }
 
-  Future<void> add(TxRecord tx) async {
-    final repo = ref.read(transactionRepoProvider);
-    await repo.insert(tx);
-    await ref
-        .read(recalcServiceProvider)
-        .recomputeAll(
-          cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour,
-        );
-    await ref.read(accountsProvider.notifier).refresh();
-    await refresh();
-    ref.invalidate(dailyCacheForMonthProvider);
-    ref.invalidate(dailyCacheForDayProvider);
-    ref.invalidate(streaksProvider);
-    ref.invalidate(earnedAchievementsProvider);
-  }
-
-  Future<void> edit(TxRecord old, TxRecord new_) async {
-    final repo = ref.read(transactionRepoProvider);
-    if (old.id != null) {
-      await repo.writeRevision(old.id!, old, new_);
+  Future<void> _afterWrite() async {
+    // A derived-state failure must never report a committed write as unsaved.
+    var refreshFailed = false;
+    for (final refresh in <Future<void> Function()>[
+      this.refresh,
+      () => ref.read(accountsProvider.notifier).refresh(),
+    ]) {
+      try {
+        await refresh();
+      } catch (_) {
+        refreshFailed = true;
+      }
     }
-    await repo.update(new_);
-    await ref
-        .read(recalcServiceProvider)
-        .recomputeAll(
-          cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour,
-        );
-    await ref.read(accountsProvider.notifier).refresh();
-    await refresh();
-    ref.invalidate(dailyCacheForMonthProvider);
-    ref.invalidate(dailyCacheForDayProvider);
-    ref.invalidate(streaksProvider);
+    await refreshDerivedData(ref);
+    if (refreshFailed) {
+      ref.read(derivedDataIssueProvider.notifier).state =
+          'Your changes were saved. Refresh the overview to reload totals.';
+    }
+  }
+
+  Future<int> add(TxRecord tx) => _requests[tx] ??= _add(tx);
+  Future<int> _add(TxRecord tx) async {
+    int id;
+    try {
+      id = await ref.read(transactionRepoProvider).insert(tx);
+    } catch (_) {
+      _requests[tx] = null;
+      rethrow;
+    }
+    await _afterWrite();
+    return id;
+  }
+
+  Future<void> undoAdded(TxRecord expected) async {
+    await ref.read(transactionRepoProvider).undoAdded(expected);
+    await _afterWrite();
+  }
+
+  Future<void> moveMoney(TxRecord tx) async {
+    await ref.read(transactionRepoProvider).moveMoney(tx);
+    await _afterWrite();
+  }
+
+  Future<void> edit(TxRecord old, TxRecord updated) async {
+    await ref.read(transactionRepoProvider).update(updated);
+    await _afterWrite();
   }
 
   Future<void> remove(int id) async {
-    final repo = ref.read(transactionRepoProvider);
-    await repo.delete(id);
+    await ref.read(transactionRepoProvider).delete(id);
+    await _afterWrite();
+  }
+}
+
+/// Rebuild recoverable analytics without changing the outcome of a saved edit.
+Future<void> refreshDerivedData(Ref ref) async {
+  try {
     await ref
         .read(recalcServiceProvider)
         .recomputeAll(
-          cutoffHour: (await ref.read(settingsProvider.future)).cutoffHour,
+          cutoffHour: (await ref.read(settingsRepoProvider).load()).cutoffHour,
         );
-    await ref.read(accountsProvider.notifier).refresh();
-    await refresh();
-    ref.invalidate(dailyCacheForMonthProvider);
-    ref.invalidate(dailyCacheForDayProvider);
-    ref.invalidate(streaksProvider);
+    ref.read(derivedDataIssueProvider.notifier).state = null;
+  } catch (error, stack) {
+    ref
+        .read(appLoggerProvider)
+        .error(
+          'Saved data retained; analytics refresh failed.',
+          error: error,
+          stack: stack,
+        );
+    ref.read(derivedDataIssueProvider.notifier).state =
+        'Your data is saved. Analytics need a refresh. Pull down on Home to retry.';
   }
+  ref.invalidate(dailyCacheForMonthProvider);
+  ref.invalidate(dailyCacheForDayProvider);
+  ref.invalidate(earnedAchievementsProvider);
 }
 
 class GoalRepo {
@@ -380,6 +580,10 @@ class GoalRepo {
   }
 
   void _validateGoal(GoalRecord g) {
+    MoneyAmount.require(g.targetAmount);
+    MoneyAmount.require(g.currentAmount, zero: true);
+    if (g.monthlyTarget != null) MoneyAmount.require(g.monthlyTarget!);
+    GoalPhotoData.decode(g.photo);
     if (g.name.trim().isEmpty ||
         !g.targetAmount.isFinite ||
         g.targetAmount <= 0 ||
@@ -404,12 +608,22 @@ class GoalRepo {
 
   Future<void> update(GoalRecord g) async {
     _validateGoal(g);
-    await (await db.database).update(
-      'goals',
-      g.toRow(),
-      where: 'id = ?',
-      whereArgs: [g.id],
-    );
+    await (await db.database).transaction((txn) async {
+      final existing = await txn.query(
+        'goals',
+        where: 'id = ?',
+        whereArgs: [g.id],
+      );
+      if (existing.isEmpty) throw StateError('Goal no longer exists.');
+      final saved = MoneyAmount.round(existing.single['current_amount'] as num);
+      final row = g.toRow();
+      row['current_amount'] = saved;
+      row['status'] = saved >= g.targetAmount ? 'completed' : 'active';
+      row['completed_at'] = saved >= g.targetAmount
+          ? existing.single['completed_at'] ?? DateTime.now().toIso8601String()
+          : null;
+      await txn.update('goals', row, where: 'id = ?', whereArgs: [g.id]);
+    });
   }
 
   Future<void> delete(int id) async {
@@ -441,10 +655,53 @@ class GoalRepo {
     return rows.map(GoalContribution.fromRow).toList();
   }
 
+  Future<void> withdraw(int goalId, double amount) async {
+    MoneyAmount.require(amount);
+    await (await db.database).transaction((txn) async {
+      final rows = await txn.query(
+        'goals',
+        where: 'id = ?',
+        whereArgs: [goalId],
+      );
+      if (rows.isEmpty) throw StateError('Goal no longer exists.');
+      final g = GoalRecord.fromRow(rows.single);
+      if (MoneyAmount.cents(amount) > MoneyAmount.cents(g.currentAmount)) {
+        throw StateError('Amount exceeds saved money.');
+      }
+      await txn.insert(
+        'goal_contributions',
+        GoalContribution(
+          goalId: goalId,
+          amount: -amount,
+          contributedAt: DateTime.now(),
+          notes: 'Withdrawal from goal allocation',
+        ).toRow(),
+      );
+      await txn.update(
+        'goals',
+        {
+          'current_amount':
+              (MoneyAmount.cents(g.currentAmount) - MoneyAmount.cents(amount)) /
+              100,
+          'status':
+              MoneyAmount.cents(g.currentAmount) - MoneyAmount.cents(amount) >=
+                  MoneyAmount.cents(g.targetAmount)
+              ? 'completed'
+              : 'active',
+          'completed_at':
+              MoneyAmount.cents(g.currentAmount) - MoneyAmount.cents(amount) >=
+                  MoneyAmount.cents(g.targetAmount)
+              ? g.completedAt?.toIso8601String()
+              : null,
+        },
+        where: 'id = ?',
+        whereArgs: [goalId],
+      );
+    });
+  }
+
   Future<int> addContribution(GoalContribution c) async {
-    if (!c.amount.isFinite || c.amount <= 0 || c.amount > 999999999.99) {
-      throw ArgumentError('Please enter a valid amount greater than zero.');
-    }
+    MoneyAmount.require(c.amount);
     return (await db.database).transaction((txn) async {
       final rows = await txn.query(
         'goals',
@@ -453,7 +710,10 @@ class GoalRepo {
       );
       if (rows.isEmpty) throw StateError('Goal no longer exists.');
       final goal = GoalRecord.fromRow(rows.single);
-      final current = goal.currentAmount + c.amount;
+      final current =
+          (MoneyAmount.cents(goal.currentAmount) +
+              MoneyAmount.cents(c.amount)) /
+          100;
       if (current > goal.targetAmount + 0.000001) {
         throw StateError('Amount exceeds the remaining goal target.');
       }

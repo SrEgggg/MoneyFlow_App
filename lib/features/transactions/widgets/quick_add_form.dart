@@ -1,3 +1,6 @@
+import 'package:go_router/go_router.dart';
+import '../../../app/router.dart';
+import 'category_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,12 +23,14 @@ class QuickAddForm extends ConsumerStatefulWidget {
   final List<AccountRecord> accounts;
   final VoidCallback onSaved;
   final DateTime? initialDate;
+  final TxType initialType;
 
   const QuickAddForm({
     super.key,
     required this.accounts,
     required this.onSaved,
     this.initialDate,
+    this.initialType = TxType.expense,
   });
 
   @override
@@ -45,13 +50,14 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
   @override
   void initState() {
     super.initState();
+    _type = widget.initialType;
     _date = widget.initialDate ?? DateTime.now();
     // Default account = first one
     if (widget.accounts.isNotEmpty) {
       _accountId = widget.accounts.first.name;
     }
     // Default category
-    _categoryId = Categories.expense.first.id;
+    _categoryId = Categories.all(kind: _type.name).first.id;
     // Focus amount field on next frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _amountFocus.requestFocus();
@@ -83,14 +89,15 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
         !amount.isFinite ||
         amount <= 0 ||
         amount > 999999999.99) {
-      _showError('Enter an amount from ₱0.01 to ₱999,999,999.99.');
+      _showError('Enter an amount from 0.01 to 999,999,999.99.');
       return;
     }
     if (_categoryId == null) {
       _showError('Pick a category');
       return;
     }
-    if (_accountId == null) {
+    if (_accountId == null ||
+        !widget.accounts.any((a) => a.name == _accountId)) {
       _showError('Pick an account');
       return;
     }
@@ -109,7 +116,8 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
       updatedAt: now,
     );
     try {
-      await ref.read(transactionsProvider.notifier).add(tx);
+      final notifier = ref.read(transactionsProvider.notifier);
+      final id = await notifier.add(tx);
       // Trigger recalc
       if (!mounted) return;
       // Reset for next entry
@@ -119,28 +127,57 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
         _saving = false;
         _date = DateTime.now();
       });
-      _amountFocus.requestFocus();
+      _amountFocus.unfocus();
       final messenger = ScaffoldMessenger.of(context);
-      widget.onSaved();
+      final categoryName = Categories.resolve(context, tx.category).name;
+      final formatted = Money.of(context).format(amount);
+      var undoing = false;
+      messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            '${_type == TxType.income ? 'Income' : 'Expense'} saved: ${Money.compact(amount)}',
+            '${tx.type == TxType.income ? 'Income' : 'Expense'} added\n$formatted • $categoryName',
           ),
-          duration: const Duration(seconds: 1),
-          backgroundColor: AppColors.surfaceContainerHigh,
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () async {
+              if (undoing) return;
+              undoing = true;
+              try {
+                await notifier.undoAdded(tx.copyWith(id: id));
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Transaction undone. Balance updated.'),
+                  ),
+                );
+              } catch (_) {
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Could not undo. The entry may have changed or its funds may be in use. Review History.',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
         ),
       );
+      widget.onSaved();
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      _showError('Could not save: $e');
+      _showError('Could not finish saving. Check History before trying again.');
     }
   }
 
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
     );
   }
 
@@ -151,12 +188,12 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 1)),
       builder: (context, child) => Theme(
-        data: ThemeData.dark().copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppColors.primary,
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: Theme.of(context).colorScheme.primary,
             onPrimary: AppColors.onPrimary,
-            surface: AppColors.surfaceContainer,
-            onSurface: AppColors.onSurface,
+            surface: Theme.of(context).colorScheme.surfaceContainer,
+            onSurface: Theme.of(context).colorScheme.onSurface,
           ),
         ),
         child: child!,
@@ -167,148 +204,203 @@ class _QuickAddFormState extends ConsumerState<QuickAddForm> {
 
   @override
   Widget build(BuildContext context) {
-    final categories = _type == TxType.income
-        ? Categories.income
-        : Categories.expense;
+    final categories = Categories.available(context, _type.name);
     if (_categoryId != null && !categories.any((c) => c.id == _categoryId)) {
       _categoryId = categories.first.id;
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-      children: [
-        // Type toggle
-        _TypeToggle(value: _type, onChanged: _setType),
-        const SizedBox(height: 16),
-
-        // Amount
-        TextField(
-          controller: _amountCtrl,
-          focusNode: _amountFocus,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+    if (widget.accounts.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Add an account before recording money.'),
+            TextButton(
+              onPressed: () => context.push(Routes.accounts),
+              child: const Text('Add account'),
+            ),
           ],
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: AppColors.onSurface,
-            fontSize: 36,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
-          ),
-          decoration: InputDecoration(
-            hintText: '0.00',
-            prefixIcon: Padding(
-              padding: const EdgeInsets.only(left: 24, right: 8),
-              child: Text(
-                '₱',
+        ),
+      );
+    }
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            children: [
+              // Type toggle
+              _TypeToggle(
+                value: _type,
+                onChanged: (type) {
+                  if (!_saving) _setType(type);
+                },
+              ),
+              const SizedBox(height: 16),
+
+              // Amount
+              TextField(
+                controller: _amountCtrl,
+                enabled: !_saving,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _amountFocus.unfocus(),
+                focusNode: _amountFocus,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+                ],
+                textAlign: TextAlign.start,
                 style: TextStyle(
-                  color: _type == TxType.income
-                      ? AppColors.primary
-                      : AppColors.error,
-                  fontSize: 28,
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 36,
                   fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                ),
+                decoration: InputDecoration(
+                  hintText: '0.00',
+                  labelText: 'Amount',
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.only(left: 24, right: 8),
+                    child: Text(
+                      Money.of(context).symbol,
+                      style: TextStyle(
+                        color: _type == TxType.income
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.error,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 0,
+                    minHeight: 0,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Account selector
+              const _Label(text: 'Account'),
+              const SizedBox(height: 8),
+              _AccountChips(
+                accounts: widget.accounts,
+                selected: _accountId,
+                onSelect: (name) {
+                  if (!_saving) setState(() => _accountId = name);
+                },
+              ),
+              const SizedBox(height: 24),
+
+              // Date
+              const _Label(text: 'Date'),
+              const SizedBox(height: 8),
+              InkWell(
+                onTap: _saving ? null : _pickDate,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          D.fullDate(_date),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Category grid
+              const _Label(text: 'Category'),
+              const SizedBox(height: 8),
+              CategoryPicker(
+                kind: _type.name,
+                selected: _categoryId,
+                onChanged: (id) {
+                  if (!_saving) setState(() => _categoryId = id);
+                },
+              ),
+              const SizedBox(height: 24),
+
+              ExpansionTile(
+                shape: const Border(),
+                collapsedShape: const Border(),
+                tilePadding: EdgeInsets.zero,
+                title: const Text('Add a note (optional)'),
+                children: [
+                  TextField(
+                    controller: _notesCtrl,
+                    enabled: !_saving,
+                    maxLines: 2,
+                    maxLength: 200,
+                    decoration: const InputDecoration(
+                      hintText: 'Add a note…',
+                      counterText: '',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.onPrimary,
+                        ),
+                      )
+                    : const Icon(Icons.check, size: 20),
+                label: Text(
+                  _saving
+                      ? 'Saving…'
+                      : 'Save ${_type == TxType.income ? 'Income' : 'Expense'}',
                 ),
               ),
             ),
-            prefixIconConstraints: const BoxConstraints(
-              minWidth: 0,
-              minHeight: 0,
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Category grid
-        const _Label(text: 'Category'),
-        const SizedBox(height: 8),
-        _CategoryGrid(
-          categories: categories,
-          selected: _categoryId,
-          onSelect: (id) => setState(() => _categoryId = id),
-        ),
-        const SizedBox(height: 20),
-
-        // Account selector
-        const _Label(text: 'Account'),
-        const SizedBox(height: 8),
-        _AccountChips(
-          accounts: widget.accounts,
-          selected: _accountId,
-          onSelect: (name) => setState(() => _accountId = name),
-        ),
-        const SizedBox(height: 20),
-
-        // Date
-        const _Label(text: 'Date'),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: _pickDate,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceContainerHigh,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.calendar_today,
-                  size: 18,
-                  color: AppColors.onSurfaceVariant,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  D.fullDate(_date),
-                  style: const TextStyle(
-                    color: AppColors.onSurface,
-                    fontSize: 15,
-                  ),
-                ),
-                const Spacer(),
-                const Icon(
-                  Icons.chevron_right,
-                  color: AppColors.onSurfaceVariant,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
-
-        // Notes
-        const _Label(text: 'Notes (optional)'),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _notesCtrl,
-          maxLines: 2,
-          maxLength: 200,
-          decoration: const InputDecoration(
-            hintText: 'Add a note…',
-            counterText: '',
-          ),
-        ),
-        const SizedBox(height: 24),
-
-        // Save
-        FilledButton.icon(
-          onPressed: _saving ? null : _save,
-          icon: _saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.onPrimary,
-                  ),
-                )
-              : const Icon(Icons.check, size: 20),
-          label: Text(
-            _saving
-                ? 'Saving…'
-                : 'Save ${_type == TxType.income ? 'Income' : 'Expense'}',
           ),
         ),
       ],
@@ -322,11 +414,8 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
     text,
-    style: const TextStyle(
-      color: AppColors.onSurfaceVariant,
-      fontSize: 12,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.4,
+    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
     ),
   );
 }
@@ -341,7 +430,7 @@ class _TypeToggle extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainerHigh,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -350,14 +439,14 @@ class _TypeToggle extends StatelessWidget {
             label: 'Income',
             icon: Icons.arrow_upward,
             active: value == TxType.income,
-            color: AppColors.primary,
+            color: Theme.of(context).colorScheme.primary,
             onTap: () => onChanged(TxType.income),
           ),
           _Tab(
             label: 'Expense',
             icon: Icons.arrow_downward,
             active: value == TxType.expense,
-            color: AppColors.error,
+            color: Theme.of(context).colorScheme.error,
             onTap: () => onChanged(TxType.expense),
           ),
         ],
@@ -379,120 +468,33 @@ class _Tab extends StatelessWidget {
     required this.color,
     required this.onTap,
   });
-
   @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: active ? color.withValues(alpha: 0.18) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: active ? color : AppColors.onSurfaceVariant,
-                size: 18,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: active ? color : AppColors.onSurfaceVariant,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+  Widget build(BuildContext context) => Expanded(
+    child: Semantics(
+      selected: active,
+      button: true,
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          minimumSize: const Size(48, 48),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          backgroundColor: active
+              ? color.withValues(alpha: .14)
+              : Colors.transparent,
+          foregroundColor: active
+              ? color
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [Icon(icon, size: 20), Text(label)],
         ),
       ),
-    );
-  }
-}
-
-class _CategoryGrid extends StatelessWidget {
-  final List<TxCategory> categories;
-  final String? selected;
-  final ValueChanged<String> onSelect;
-  const _CategoryGrid({
-    required this.categories,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (final c in categories)
-          _CategoryChip(
-            cat: c,
-            active: c.id == selected,
-            onTap: () => onSelect(c.id),
-          ),
-      ],
-    );
-  }
-}
-
-class _CategoryChip extends StatelessWidget {
-  final TxCategory cat;
-  final bool active;
-  final VoidCallback onTap;
-  const _CategoryChip({
-    required this.cat,
-    required this.active,
-    required this.onTap,
-  });
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: active
-              ? cat.color.withValues(alpha: 0.18)
-              : AppColors.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: active ? cat.color : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              cat.icon,
-              color: active ? cat.color : AppColors.onSurfaceVariant,
-              size: 16,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              cat.name,
-              style: TextStyle(
-                color: active ? cat.color : AppColors.onSurface,
-                fontSize: 13,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    ),
+  );
 }
 
 class _AccountChips extends StatelessWidget {
@@ -508,9 +510,12 @@ class _AccountChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (accounts.isEmpty) {
-      return const Text(
-        'No accounts yet. Add one in Settings.',
-        style: TextStyle(color: AppColors.onSurfaceVariant, fontSize: 13),
+      return Text(
+        'No accounts yet. Add one in Accounts.',
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontSize: 13,
+        ),
       );
     }
     return Wrap(
@@ -539,7 +544,7 @@ class _AccountChip extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    final color = _parseHex(account.color);
+    final color = Theme.of(context).colorScheme.primary;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -548,7 +553,7 @@ class _AccountChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: active
               ? color.withValues(alpha: 0.18)
-              : AppColors.surfaceContainerHigh,
+              : Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: active ? color : Colors.transparent,
@@ -562,15 +567,17 @@ class _AccountChip extends StatelessWidget {
             Text(
               account.name,
               style: TextStyle(
-                color: active ? color : AppColors.onSurface,
+                color: active ? color : Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
             Text(
-              Money.compact(account.balance),
+              Money.of(context).compact(account.balance),
               style: TextStyle(
-                color: active ? color : AppColors.onSurfaceVariant,
+                color: active
+                    ? color
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),
@@ -579,10 +586,5 @@ class _AccountChip extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Color _parseHex(String hex) {
-    final cleaned = hex.replaceAll('#', '');
-    return Color(int.parse('FF$cleaned', radix: 16));
   }
 }

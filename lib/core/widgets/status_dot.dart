@@ -30,13 +30,13 @@ class StatusDot extends StatelessWidget {
 
   static Color colorForStatus(DayStatus s) => _colorFor(s);
   static Color _colorFor(DayStatus s) => switch (s) {
-        DayStatus.darkGreen => AppColors.dayDarkGreen,
-        DayStatus.green => AppColors.dayGreen,
-        DayStatus.yellow => AppColors.dayYellow,
-        DayStatus.red => AppColors.dayRed,
-        DayStatus.darkRed => AppColors.dayDarkRed,
-        DayStatus.none => AppColors.dayEmpty,
-      };
+    DayStatus.darkGreen => AppColors.dayDarkGreen,
+    DayStatus.green => AppColors.dayGreen,
+    DayStatus.yellow => AppColors.dayYellow,
+    DayStatus.red => AppColors.dayRed,
+    DayStatus.darkRed => AppColors.dayDarkRed,
+    DayStatus.none => AppColors.dayEmpty,
+  };
 }
 
 /// Day status (mirrors the strings stored in `daily_performance_cache.status`).

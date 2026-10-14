@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/utils/money.dart';
 import '../../data/models/budget.dart';
 import '../../data/repositories/budget_repository.dart';
@@ -40,8 +39,12 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
       body: budgetsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
-          child: Text('Error: $e',
-              style: const TextStyle(color: AppColors.onSurfaceVariant)),
+          child: Text(
+            'Error: $e',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
         data: (budgets) => _BudgetBody(
           budgets: budgets,
@@ -60,7 +63,7 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
   ) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
-      backgroundColor: AppColors.surfaceContainer,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -71,10 +74,10 @@ class _BudgetsScreenState extends ConsumerState<BudgetsScreen> {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        backgroundColor: AppColors.surfaceContainerHigh,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
         content: Text(
           existing == null ? 'Budget added' : 'Budget updated',
-          style: const TextStyle(color: AppColors.onSurface),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
         ),
         duration: const Duration(seconds: 2),
       ),
@@ -104,7 +107,8 @@ class _BudgetBody extends StatelessWidget {
       builder: (context, snap) {
         final spent = snap.data ?? const <String, double>{};
         // Sort: exceeded first (by overrun), then by spent descending.
-        final ordered = [...budgets]..sort((a, b) {
+        final ordered = [...budgets]
+          ..sort((a, b) {
             final aSpent = spent[a.category] ?? 0;
             final bSpent = spent[b.category] ?? 0;
             final aOver = aSpent - a.amount;
@@ -115,8 +119,10 @@ class _BudgetBody extends StatelessWidget {
             return bSpent.compareTo(aSpent);
           });
         final totalCap = budgets.fold<double>(0, (s, b) => s + b.amount);
-        final totalSpent =
-            budgets.fold<double>(0, (s, b) => s + (spent[b.category] ?? 0));
+        final totalSpent = budgets.fold<double>(
+          0,
+          (s, b) => s + (spent[b.category] ?? 0),
+        );
 
         return CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
@@ -126,10 +132,7 @@ class _BudgetBody extends StatelessWidget {
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
               sliver: SliverToBoxAdapter(
-                child: _BudgetSummary(
-                  cap: totalCap,
-                  spent: totalSpent,
-                ),
+                child: _BudgetSummary(cap: totalCap, spent: totalSpent),
               ),
             ),
             SliverPadding(
@@ -166,18 +169,16 @@ class _BudgetSummary extends StatelessWidget {
     final pct = cap > 0 ? (spent / cap).clamp(0.0, 1.5) : 0.0;
     final over = remaining < 0;
     final progressColor = over
-        ? AppColors.error
+        ? Theme.of(context).colorScheme.error
         : pct > 0.85
-            ? const Color(0xFFEAB308)
-            : AppColors.primary;
+        ? const Color(0xFFEAB308)
+        : Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
       decoration: BoxDecoration(
-        color: AppColors.surfaceContainer,
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.04),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,19 +193,17 @@ class _BudgetSummary extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(
-                  over
-                      ? Icons.warning_amber_rounded
-                      : Icons.savings_outlined,
+                  over ? Icons.warning_amber_rounded : Icons.savings_outlined,
                   size: 18,
                   color: progressColor,
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Total this month',
                   style: TextStyle(
-                    color: AppColors.onSurface,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
                   ),
@@ -212,12 +211,12 @@ class _BudgetSummary extends StatelessWidget {
               ),
               Text(
                 over
-                    ? 'Over ${Money.format((spent - cap).abs())}'
-                    : '${Money.format(remaining)} left',
+                    ? 'Over ${Money.of(context).format((spent - cap).abs())}'
+                    : '${Money.of(context).format(remaining)} left',
                 style: TextStyle(
                   color: over
-                      ? AppColors.error
-                      : AppColors.onSurfaceVariant,
+                      ? Theme.of(context).colorScheme.error
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -229,14 +228,14 @@ class _BudgetSummary extends StatelessWidget {
             children: [
               _MiniStat(
                 label: 'Spent',
-                value: Money.format(spent),
-                color: AppColors.onSurface,
+                value: Money.of(context).format(spent),
+                color: Theme.of(context).colorScheme.onSurface,
               ),
               const SizedBox(width: 18),
               _MiniStat(
                 label: 'Cap',
-                value: Money.format(cap),
-                color: AppColors.onSurfaceVariant,
+                value: Money.of(context).format(cap),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ],
           ),
@@ -247,7 +246,11 @@ class _BudgetSummary extends StatelessWidget {
               height: 8,
               child: Stack(
                 children: [
-                  Container(color: AppColors.surfaceContainerHigh),
+                  Container(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
+                  ),
                   FractionallySizedBox(
                     widthFactor: pct.clamp(0.0, 1.0),
                     child: Container(
@@ -283,8 +286,8 @@ class _MiniStat extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: AppColors.onSurfaceVariant,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 11,
             fontWeight: FontWeight.w500,
           ),
@@ -318,26 +321,31 @@ class _EmptyState extends StatelessWidget {
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: AppColors.surfaceContainerHigh,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Icon(Icons.pie_chart_outline_rounded,
-                  color: AppColors.primary, size: 30),
+              child: Icon(
+                Icons.pie_chart_outline_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 30,
+              ),
             ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'No budgets yet',
               style: TextStyle(
-                color: AppColors.onSurface,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Set monthly caps per category to keep spending in check.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.onSurfaceVariant),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

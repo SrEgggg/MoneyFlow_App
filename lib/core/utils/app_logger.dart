@@ -31,7 +31,13 @@ class AppLogger {
         dev.log(logLine, name: tag, level: 900);
         break;
       case 'ERROR':
-        dev.log(logLine, name: tag, level: 1000, error: error, stackTrace: stack);
+        dev.log(
+          logLine,
+          name: tag,
+          level: 1000,
+          error: error,
+          stackTrace: stack,
+        );
         break;
     }
   }

@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../app/theme.dart';
-
 /// Circular percent indicator used in the Home monthly-progress card.
 class ProgressRing extends StatelessWidget {
   final double progress; // 0..1
@@ -9,8 +7,8 @@ class ProgressRing extends StatelessWidget {
   final TextStyle? centerStyle;
   final double size;
   final double stroke;
-  final Color trackColor;
-  final Color progressColor;
+  final Color? trackColor;
+  final Color? progressColor;
 
   const ProgressRing({
     super.key,
@@ -19,8 +17,8 @@ class ProgressRing extends StatelessWidget {
     this.centerStyle,
     this.size = 84,
     this.stroke = 8,
-    this.trackColor = AppColors.surfaceContainerHigh,
-    this.progressColor = AppColors.primary,
+    this.trackColor,
+    this.progressColor,
   });
 
   @override
@@ -37,7 +35,9 @@ class ProgressRing extends StatelessWidget {
             child: CircularProgressIndicator(
               value: 1,
               strokeWidth: stroke,
-              color: trackColor,
+              color:
+                  trackColor ??
+                  Theme.of(context).colorScheme.surfaceContainerHighest,
               backgroundColor: Colors.transparent,
             ),
           ),
@@ -47,16 +47,17 @@ class ProgressRing extends StatelessWidget {
             child: CircularProgressIndicator(
               value: progress.clamp(0, 1),
               strokeWidth: stroke,
-              color: progressColor,
+              color: progressColor ?? Theme.of(context).colorScheme.primary,
               backgroundColor: Colors.transparent,
               strokeCap: StrokeCap.round,
             ),
           ),
           Text(
             centerText,
-            style: centerStyle ??
-                const TextStyle(
-                  color: AppColors.onSurface,
+            style:
+                centerStyle ??
+                TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
                 ),
@@ -71,14 +72,14 @@ class ProgressRing extends StatelessWidget {
 class LinearProgressBar extends StatelessWidget {
   final double progress;
   final double height;
-  final Color color;
-  final Color trackColor;
+  final Color? color;
+  final Color? trackColor;
   const LinearProgressBar({
     super.key,
     required this.progress,
     this.height = 6,
-    this.color = AppColors.primary,
-    this.trackColor = AppColors.surfaceContainerHigh,
+    this.color,
+    this.trackColor,
   });
 
   @override
@@ -89,10 +90,16 @@ class LinearProgressBar extends StatelessWidget {
         height: height,
         child: Stack(
           children: [
-            Container(color: trackColor),
+            Container(
+              color:
+                  trackColor ??
+                  Theme.of(context).colorScheme.surfaceContainerHighest,
+            ),
             FractionallySizedBox(
               widthFactor: progress.clamp(0, 1),
-              child: Container(color: color),
+              child: Container(
+                color: color ?? Theme.of(context).colorScheme.primary,
+              ),
             ),
           ],
         ),

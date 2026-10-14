@@ -1,3 +1,4 @@
+import '../../core/widgets/app_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -43,17 +44,16 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen>
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Container(
-            color: AppColors.surface,
+            color: Theme.of(context).colorScheme.surface,
             child: TabBar(
               controller: _tab,
-              indicatorColor: AppColors.primary,
-              labelColor: AppColors.onSurface,
-              unselectedLabelColor: AppColors.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              labelColor: Theme.of(context).colorScheme.onSurface,
+              unselectedLabelColor: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant,
               indicatorSize: TabBarIndicatorSize.label,
-              labelStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              labelStyle: Theme.of(context).textTheme.labelLarge,
               tabs: const [
                 Tab(text: 'Active'),
                 Tab(text: 'Completed'),
@@ -63,7 +63,11 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen>
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primary,
+        elevation: 0,
+        focusElevation: 0,
+        hoverElevation: 0,
+        highlightElevation: 0,
+        backgroundColor: AppColors.primaryDark,
         foregroundColor: AppColors.onPrimary,
         onPressed: () => context.push(Routes.createGoal),
         icon: const Icon(Icons.add),
@@ -71,10 +75,12 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen>
       ),
       body: goalsAsync.when(
         data: (goals) {
-          final active =
-              goals.where((g) => g.status == GoalStatus.active).toList();
-          final completed =
-              goals.where((g) => g.status == GoalStatus.completed).toList();
+          final active = goals
+              .where((g) => g.status == GoalStatus.active)
+              .toList();
+          final completed = goals
+              .where((g) => g.status == GoalStatus.completed)
+              .toList();
           return TabBarView(
             controller: _tab,
             children: [
@@ -87,14 +93,17 @@ class _GoalsScreenState extends ConsumerState<GoalsScreen>
               _GoalList(
                 goals: completed,
                 emptyTitle: 'No completed goals yet',
-                emptySubtitle:
-                    'Finish funding an active goal to see it here.',
+                emptySubtitle: 'Finish funding an active goal to see it here.',
               ),
             ],
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        loading: () => const LoadingPlaceholder(lines: 4),
+        error: (_, __) => InlineNotice(
+          message: 'Could not load this screen. Your saved data is unchanged.',
+          actionLabel: 'Retry',
+          onAction: () => ref.invalidate(goalsProvider),
+        ),
       ),
     );
   }

@@ -1,3 +1,6 @@
+import 'goal_photo_service.dart';
+import 'widgets/goal_image.dart';
+import '../../core/utils/money.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,12 +27,15 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
   GoalKind _kind = GoalKind.emergency;
   DateTime? _targetDate;
   bool _saving = false;
+  bool _picking = false;
+  String? _photo;
 
   @override
   void initState() {
     super.initState();
     final goal = widget.goal;
     if (goal != null) {
+      _photo = goal.photo;
       _nameCtrl.text = goal.name;
       _targetCtrl.text = goal.targetAmount.toStringAsFixed(2);
       _monthlyCtrl.text = goal.monthlyTarget?.toStringAsFixed(2) ?? '';
@@ -46,8 +52,23 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
     super.dispose();
   }
 
+  Future<void> _pickPhoto() async {
+    if (_picking || _saving) return;
+    setState(() => _picking = true);
+    try {
+      final photo = await ref.read(goalPhotoServiceProvider).pick();
+      if (mounted && photo != null) setState(() => _photo = photo);
+    } catch (_) {
+      if (mounted) {
+        _err('Could not open this photo. Choose another image and try again.');
+      }
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
   Future<void> _save() async {
-    if (_saving) return;
+    if (_saving || _picking) return;
     final name = _nameCtrl.text.trim();
     final target = double.tryParse(_targetCtrl.text.trim());
     if (name.isEmpty) {
@@ -71,14 +92,11 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
       return;
     }
     final saved = widget.goal?.currentAmount ?? 0;
-    if (target < saved) {
-      _err('Target cannot be less than the amount already saved.');
-      return;
-    }
     setState(() => _saving = true);
     final goal = GoalRecord(
       id: widget.goal?.id,
       name: name,
+      photo: _photo,
       kind: _kind,
       icon: _kind.id,
       targetAmount: target,
@@ -100,8 +118,9 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
         await ref.read(goalsProvider.notifier).edit(goal);
       }
       if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
       context.pop();
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
             widget.goal == null
@@ -119,7 +138,10 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
 
   void _err(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
     );
   }
 
@@ -132,6 +154,62 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GoalImage(photo: _photo, icon: _kind.icon, size: 80),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Make it yours',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Add a photo of what you’re saving for.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    TextButton.icon(
+                      onPressed: _picking || _saving ? null : _pickPhoto,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: Text(
+                        _picking
+                            ? 'Preparing photo…'
+                            : _photo == null
+                            ? 'Choose photo'
+                            : 'Change photo',
+                      ),
+                    ),
+                    if (_photo != null)
+                      TextButton(
+                        onPressed: _picking || _saving
+                            ? null
+                            : () => setState(() => _photo = null),
+                        child: const Text('Remove photo'),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (ref.watch(recoveredGoalPhotoProvider).valueOrNull != null)
+            TextButton(
+              onPressed: _saving || _picking
+                  ? null
+                  : () {
+                      setState(
+                        () => _photo = ref
+                            .read(recoveredGoalPhotoProvider)
+                            .valueOrNull,
+                      );
+                      ref.invalidate(recoveredGoalPhotoProvider);
+                    },
+              child: const Text('Use recovered photo selection'),
+            ),
+          const SizedBox(height: 24),
           const _Label(text: 'Goal Type'),
           const SizedBox(height: 8),
           Wrap(
@@ -156,7 +234,7 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
           const SizedBox(height: 8),
           TextField(
             controller: _nameCtrl,
-            decoration: const InputDecoration(hintText: 'e.g. Emergency Fund'),
+            decoration: InputDecoration(hintText: 'e.g. Emergency Fund'),
           ),
           const SizedBox(height: 20),
           const _Label(text: 'Target Amount'),
@@ -167,9 +245,9 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             ],
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: '0.00',
-              prefixText: '₱ ',
+              prefixText: '${Money.of(context).symbol} ',
             ),
           ),
           const SizedBox(height: 20),
@@ -181,9 +259,9 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             ],
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: '0.00',
-              prefixText: '₱ ',
+              prefixText: '${Money.of(context).symbol} ',
             ),
           ),
           const SizedBox(height: 20),
@@ -199,12 +277,12 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
                 firstDate: DateTime.now(),
                 lastDate: DateTime.now().add(const Duration(days: 365 * 10)),
                 builder: (context, child) => Theme(
-                  data: ThemeData.dark().copyWith(
-                    colorScheme: const ColorScheme.dark(
-                      primary: AppColors.primary,
+                  data: Theme.of(context).copyWith(
+                    colorScheme: Theme.of(context).colorScheme.copyWith(
+                      primary: Theme.of(context).colorScheme.primary,
                       onPrimary: AppColors.onPrimary,
-                      surface: AppColors.surfaceContainer,
-                      onSurface: AppColors.onSurface,
+                      surface: Theme.of(context).colorScheme.surfaceContainer,
+                      onSurface: Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                   child: child!,
@@ -216,15 +294,15 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
-                color: AppColors.surfaceContainerHigh,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.calendar_today,
                     size: 18,
-                    color: AppColors.onSurfaceVariant,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -232,8 +310,8 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
                       _targetDate == null
                           ? 'No target date'
                           : '${_targetDate!.year}-${_targetDate!.month.toString().padLeft(2, '0')}-${_targetDate!.day.toString().padLeft(2, '0')}',
-                      style: const TextStyle(
-                        color: AppColors.onSurface,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 15,
                       ),
                     ),
@@ -241,9 +319,9 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
                   if (_targetDate != null)
                     GestureDetector(
                       onTap: () => setState(() => _targetDate = null),
-                      child: const Icon(
+                      child: Icon(
                         Icons.close,
-                        color: AppColors.onSurfaceVariant,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         size: 18,
                       ),
                     ),
@@ -253,7 +331,7 @@ class _CreateGoalScreenState extends ConsumerState<CreateGoalScreen> {
           ),
           const SizedBox(height: 32),
           FilledButton(
-            onPressed: _saving ? null : _save,
+            onPressed: _saving || _picking ? null : _save,
             child: Text(
               _saving
                   ? 'Saving…'
@@ -274,9 +352,9 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
     text,
-    style: const TextStyle(
-      color: AppColors.onSurfaceVariant,
-      fontSize: 12,
+    style: TextStyle(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      fontSize: 13,
       fontWeight: FontWeight.w600,
       letterSpacing: 0.4,
     ),
@@ -294,42 +372,17 @@ class _KindChip extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: active
-              ? kind.color.withValues(alpha: 0.18)
-              : AppColors.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: active ? kind.color : Colors.transparent,
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              kind.icon,
-              size: 16,
-              color: active ? kind.color : AppColors.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              kind.label,
-              style: TextStyle(
-                color: active ? kind.color : AppColors.onSurface,
-                fontSize: 13,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
+    return ChoiceChip(
+      selected: active,
+      onSelected: (_) => onTap(),
+      avatar: Icon(
+        kind.icon,
+        size: 18,
+        color: active
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.onSurfaceVariant,
       ),
+      label: Text(kind.label),
     );
   }
 }

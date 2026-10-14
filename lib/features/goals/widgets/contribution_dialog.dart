@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../app/theme.dart';
 import '../../../core/utils/money.dart';
+import '../../../core/utils/goal_plan.dart';
 import '../../../data/models/models.dart';
 
 /// Modal dialog for adding a contribution to a goal.
@@ -42,7 +42,7 @@ class _ContributionDialogState extends State<_ContributionDialog> {
     if (v > widget.goal.targetAmount - widget.goal.currentAmount) {
       setState(
         () => _error =
-            'Amount exceeds the remaining ${Money.compact(widget.goal.targetAmount - widget.goal.currentAmount)}',
+            'Amount exceeds the remaining ${Money.of(context).compact(widget.goal.targetAmount - widget.goal.currentAmount)}',
       );
       return;
     }
@@ -52,21 +52,53 @@ class _ContributionDialogState extends State<_ContributionDialog> {
   @override
   Widget build(BuildContext context) {
     final remaining = widget.goal.targetAmount - widget.goal.currentAmount;
+    final plan = GoalPlan.forGoal(widget.goal, DateTime.now());
     return AlertDialog(
-      backgroundColor: AppColors.surfaceContainer,
-      title: Text('Contribute to ${widget.goal.name}'),
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
+      title: Text('Add savings to ${widget.goal.name}'),
+      scrollable: true,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Remaining: ${Money.format(remaining)}',
-            style: const TextStyle(
-              color: AppColors.onSurfaceVariant,
-              fontSize: 12,
+            'Remaining: ${Money.of(context).format(remaining)}',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontSize: 13,
             ),
           ),
           const SizedBox(height: 12),
+          if (plan.message == null) ...[
+            Text(
+              'Choose a pace or enter your own amount.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final pace in [
+                  ('A day', plan.daily),
+                  ('A week', plan.weekly),
+                ])
+                  ActionChip(
+                    label: Text(
+                      '${pace.$1} · ${Money.of(context).format(pace.$2)}',
+                    ),
+                    onPressed: () {
+                      _ctrl.text = pace.$2.toStringAsFixed(2);
+                      _ctrl.selection = TextSelection.collapsed(
+                        offset: _ctrl.text.length,
+                      );
+                      setState(() => _error = null);
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
           TextField(
             controller: _ctrl,
             autofocus: true,
@@ -75,8 +107,9 @@ class _ContributionDialogState extends State<_ContributionDialog> {
               FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
             ],
             decoration: InputDecoration(
+              labelText: 'Amount to save',
               hintText: '0.00',
-              prefixText: '₱ ',
+              prefixText: '${Money.of(context).symbol} ',
               errorText: _error,
             ),
           ),
@@ -87,7 +120,7 @@ class _ContributionDialogState extends State<_ContributionDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Contribute')),
+        FilledButton(onPressed: _submit, child: const Text('Add savings')),
       ],
     );
   }

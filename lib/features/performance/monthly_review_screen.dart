@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/utils/financial_day.dart';
 import '../../core/utils/money.dart';
@@ -21,8 +20,10 @@ class MonthlyReviewScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cutoff = ref.watch(settingsProvider).valueOrNull?.cutoffHour ?? 3;
     final cacheAsync = ref.watch(
-        dailyCacheForMonthProvider((month: month, cutoffHour: 3)));
+      dailyCacheForMonthProvider((month: month, cutoffHour: cutoff)),
+    );
     final txsAsync = ref.watch(transactionsProvider);
     final goalsAsync = ref.watch(goalsProvider);
 
@@ -40,12 +41,20 @@ class MonthlyReviewScreen extends ConsumerWidget {
               return goalsAsync.when(
                 data: (goals) {
                   // Txs in this month
-                  final start = FinancialDay.startOfMonth(month);
-                  final end = FinancialDay.endOfMonth(month);
+                  final start = FinancialDay.startOfMonth(
+                    month,
+                    cutoffHour: cutoff,
+                  );
+                  final end = FinancialDay.endOfMonth(
+                    month,
+                    cutoffHour: cutoff,
+                  );
                   final monthTxs = txs
-                      .where((t) =>
-                          !t.occurredAt.isBefore(start) &&
-                          !t.occurredAt.isAfter(end))
+                      .where(
+                        (t) =>
+                            !t.occurredAt.isBefore(start) &&
+                            !t.occurredAt.isAfter(end),
+                      )
                       .toList();
                   // Spending by category
                   final byCat = <String, double>{};
@@ -54,12 +63,20 @@ class MonthlyReviewScreen extends ConsumerWidget {
                     byCat[t.category] = (byCat[t.category] ?? 0) + t.amount;
                   }
                   // Most improved vs last month
-                  final lastStart = FinancialDay.startOfMonth(lastMonthStart);
-                  final lastEnd = FinancialDay.endOfMonth(lastMonthStart);
+                  final lastStart = FinancialDay.startOfMonth(
+                    lastMonthStart,
+                    cutoffHour: cutoff,
+                  );
+                  final lastEnd = FinancialDay.endOfMonth(
+                    lastMonthStart,
+                    cutoffHour: cutoff,
+                  );
                   final lastTxs = txs
-                      .where((t) =>
-                          !t.occurredAt.isBefore(lastStart) &&
-                          !t.occurredAt.isAfter(lastEnd))
+                      .where(
+                        (t) =>
+                            !t.occurredAt.isBefore(lastStart) &&
+                            !t.occurredAt.isAfter(lastEnd),
+                      )
                       .toList();
                   final lastByCat = <String, double>{};
                   for (final t in lastTxs) {
@@ -69,7 +86,8 @@ class MonthlyReviewScreen extends ConsumerWidget {
                   }
                   String? mostImproved;
                   double bestDelta = 0;
-                  for (final c in byCat.keys.toList() + lastByCat.keys.toList()) {
+                  for (final c
+                      in byCat.keys.toList() + lastByCat.keys.toList()) {
                     final diff = (byCat[c] ?? 0) - (lastByCat[c] ?? 0);
                     if (diff < bestDelta) {
                       bestDelta = diff;
@@ -78,23 +96,26 @@ class MonthlyReviewScreen extends ConsumerWidget {
                   }
                   // Goals started/completed in month
                   final started = goals
-                      .where((g) =>
-                          g.startedAt.year == month.year &&
-                          g.startedAt.month == month.month)
+                      .where(
+                        (g) =>
+                            g.startedAt.year == month.year &&
+                            g.startedAt.month == month.month,
+                      )
                       .length;
                   final completed = goals
-                      .where((g) =>
-                          g.completedAt != null &&
-                          g.completedAt!.year == month.year &&
-                          g.completedAt!.month == month.month)
+                      .where(
+                        (g) =>
+                            g.completedAt != null &&
+                            g.completedAt!.year == month.year &&
+                            g.completedAt!.month == month.month,
+                      )
                       .length;
 
                   final highestEntry = byCat.entries.toList()
                     ..sort((a, b) => b.value.compareTo(a.value));
-                  final lowestEntry = byCat.entries
-                      .where((e) => e.value > 0)
-                      .toList()
-                    ..sort((a, b) => a.value.compareTo(b.value));
+                  final lowestEntry =
+                      byCat.entries.where((e) => e.value > 0).toList()
+                        ..sort((a, b) => a.value.compareTo(b.value));
 
                   return ListView(
                     padding: const EdgeInsets.all(16),
@@ -104,11 +125,27 @@ class MonthlyReviewScreen extends ConsumerWidget {
                         title: 'Savings Performance',
                         child: Column(
                           children: [
-                            _Row(label: 'Income', value: Money.format(income), valueColor: AppColors.primary),
-                            _Row(label: 'Expenses', value: Money.format(expenses), valueColor: AppColors.error),
+                            _Row(
+                              label: 'Income',
+                              value: Money.of(context).format(income),
+                              valueColor: Theme.of(context).colorScheme.primary,
+                            ),
+                            _Row(
+                              label: 'Expenses',
+                              value: Money.of(context).format(expenses),
+                              valueColor: Theme.of(context).colorScheme.error,
+                            ),
                             const Divider(height: 16),
-                            _Row(label: 'Saved', value: Money.format(saved), valueColor: AppColors.primary, bold: true),
-                            _Row(label: 'Savings rate', value: '${rate.toStringAsFixed(1)}%'),
+                            _Row(
+                              label: 'Net cash flow',
+                              value: Money.of(context).format(saved),
+                              valueColor: Theme.of(context).colorScheme.primary,
+                              bold: true,
+                            ),
+                            _Row(
+                              label: 'Income retained',
+                              value: '${rate.toStringAsFixed(1)}%',
+                            ),
                           ],
                         ),
                       ),
@@ -123,8 +160,8 @@ class MonthlyReviewScreen extends ConsumerWidget {
                               label: 'Goals completed',
                               value: '$completed',
                               valueColor: completed > 0
-                                  ? AppColors.primary
-                                  : AppColors.onSurface,
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.onSurface,
                             ),
                           ],
                         ),
@@ -139,21 +176,29 @@ class MonthlyReviewScreen extends ConsumerWidget {
                               if (highestEntry.isNotEmpty)
                                 _Row(
                                   label: 'Highest category',
-                                  value: Money.format(highestEntry.first.value),
+                                  value: Money.of(
+                                    context,
+                                  ).format(highestEntry.first.value),
                                   sublabel: highestEntry.first.key,
                                 ),
                               if (lowestEntry.isNotEmpty)
                                 _Row(
                                   label: 'Lowest category',
-                                  value: Money.format(lowestEntry.first.value),
+                                  value: Money.of(
+                                    context,
+                                  ).format(lowestEntry.first.value),
                                   sublabel: lowestEntry.first.key,
                                 ),
                               if (mostImproved != null)
                                 _Row(
                                   label: 'Most improved',
-                                  value: Money.format(bestDelta.abs()),
+                                  value: Money.of(
+                                    context,
+                                  ).format(bestDelta.abs()),
                                   sublabel: mostImproved,
-                                  valueColor: AppColors.primary,
+                                  valueColor: Theme.of(
+                                    context,
+                                  ).colorScheme.primary,
                                 ),
                             ],
                           ),
@@ -165,6 +210,7 @@ class MonthlyReviewScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: _insights(
+                            context,
                             income: income,
                             expenses: expenses,
                             saved: saved,
@@ -178,8 +224,7 @@ class MonthlyReviewScreen extends ConsumerWidget {
                     ],
                   );
                 },
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
+                loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('Error: $e')),
               );
             },
@@ -193,7 +238,8 @@ class MonthlyReviewScreen extends ConsumerWidget {
     );
   }
 
-  List<Widget> _insights({
+  List<Widget> _insights(
+    BuildContext context, {
     required double income,
     required double expenses,
     required double saved,
@@ -204,43 +250,55 @@ class MonthlyReviewScreen extends ConsumerWidget {
   }) {
     final insights = <Widget>[];
     if (saved > 0) {
-      insights.add(_Insight(
-        icon: Icons.savings,
-        color: AppColors.primary,
-        text: 'You saved ${Money.format(saved)} this month.',
-      ));
+      insights.add(
+        _Insight(
+          icon: Icons.savings,
+          color: Theme.of(context).colorScheme.primary,
+          text: 'You saved ${Money.of(context).format(saved)} this month.',
+        ),
+      );
     }
     if (byCat['food_dining'] != null &&
         lastByCat['food_dining'] != null &&
         (byCat['food_dining']! - lastByCat['food_dining']!).abs() >= 100) {
       final diff = byCat['food_dining']! - lastByCat['food_dining']!;
-      insights.add(_Insight(
-        icon: Icons.restaurant_menu,
-        color: diff > 0 ? AppColors.error : AppColors.primary,
-        text:
-            'Food spending ${diff > 0 ? "increased" : "decreased"} ${Money.format(diff.abs())} vs last month.',
-      ));
+      insights.add(
+        _Insight(
+          icon: Icons.restaurant_menu,
+          color: diff > 0
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).colorScheme.primary,
+          text:
+              'Food spending ${diff > 0 ? "increased" : "decreased"} ${Money.of(context).format(diff.abs())} vs last month.',
+        ),
+      );
     }
     if (rate >= 20) {
-      insights.add(_Insight(
-        icon: Icons.trending_up,
-        color: AppColors.primary,
-        text: 'Strong ${rate.toStringAsFixed(0)}% savings rate this month.',
-      ));
+      insights.add(
+        _Insight(
+          icon: Icons.trending_up,
+          color: Theme.of(context).colorScheme.primary,
+          text: 'Strong ${rate.toStringAsFixed(0)}% savings rate this month.',
+        ),
+      );
     } else if (rate < 10 && income > 0) {
-      insights.add(_Insight(
-        icon: Icons.warning_amber,
-        color: AppColors.error,
-        text:
-            'Savings rate is ${rate.toStringAsFixed(0)}% — consider tightening expenses.',
-      ));
+      insights.add(
+        _Insight(
+          icon: Icons.warning_amber,
+          color: Theme.of(context).colorScheme.error,
+          text:
+              'Income retained is ${rate.toStringAsFixed(0)}% — consider tightening expenses.',
+        ),
+      );
     }
     if (insights.isEmpty) {
-      insights.add(const _Insight(
-        icon: Icons.info_outline,
-        color: AppColors.onSurfaceVariant,
-        text: 'Keep tracking — insights will appear as you log activity.',
-      ));
+      insights.add(
+        _Insight(
+          icon: Icons.info_outline,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          text: 'Keep tracking — insights will appear as you log activity.',
+        ),
+      );
     }
     return insights;
   }
@@ -271,8 +329,8 @@ class _Row extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
-                    color: AppColors.onSurfaceVariant,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -280,8 +338,8 @@ class _Row extends StatelessWidget {
                 if (sublabel != null)
                   Text(
                     sublabel!,
-                    style: const TextStyle(
-                      color: AppColors.onSurfaceMuted,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 11,
                     ),
                   ),
@@ -291,7 +349,7 @@ class _Row extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: valueColor ?? AppColors.onSurface,
+              color: valueColor ?? Theme.of(context).colorScheme.onSurface,
               fontSize: bold ? 16 : 14,
               fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
             ),
@@ -319,8 +377,8 @@ class _Insight extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
-                color: AppColors.onSurface,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 13,
                 height: 1.4,
               ),

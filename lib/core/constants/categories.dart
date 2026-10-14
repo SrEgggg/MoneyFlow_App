@@ -12,6 +12,7 @@ class TxCategory {
   /// 'income' or 'expense' — controls which side of Quick Add the
   /// category is shown in.
   final String kind;
+  final bool archived;
 
   const TxCategory({
     required this.id,
@@ -19,6 +20,7 @@ class TxCategory {
     required this.icon,
     required this.color,
     required this.kind,
+    this.archived = false,
   });
 }
 
@@ -159,11 +161,75 @@ class Categories {
     ),
   ];
 
+  static List<TxCategory> available(
+    BuildContext context,
+    String kind, {
+    String? selected,
+  }) => [
+    ...all(kind: kind),
+    ...?context
+        .dependOnInheritedWidgetOfExactType<CategoryScope>()
+        ?.categories
+        .where((c) => c.kind == kind && (!c.archived || c.id == selected)),
+  ];
+
+  static TxCategory resolve(BuildContext context, String id) {
+    final custom =
+        context
+            .dependOnInheritedWidgetOfExactType<CategoryScope>()
+            ?.categories ??
+        <TxCategory>[];
+    for (final category in custom) {
+      if (category.id == id) return category;
+    }
+    return byId(id);
+  }
+
   static List<TxCategory> all({required String kind}) =>
       kind == 'income' ? income : expense;
 
   static TxCategory byId(String id) {
+    if (id == 'transfer') {
+      return const TxCategory(
+        id: 'transfer',
+        name: 'Transfer',
+        icon: Icons.swap_horiz,
+        color: Color(0xFF3B82F6),
+        kind: 'transfer',
+      );
+    }
     final list = [...income, ...expense];
     return list.firstWhere((c) => c.id == id, orElse: () => expense.last);
   }
 }
+
+/// Reactive category catalog shared by every route and overlay.
+class CategoryScope extends InheritedWidget {
+  final List<TxCategory> categories;
+  const CategoryScope({
+    super.key,
+    required this.categories,
+    required super.child,
+  });
+  @override
+  bool updateShouldNotify(CategoryScope oldWidget) =>
+      categories != oldWidget.categories;
+}
+
+/// Stable keys keep icons tree-shakeable in release builds.
+const customCategoryIcons = <String, IconData>{
+  'label': Icons.label_outline,
+  'home': Icons.home_outlined,
+  'pets': Icons.pets,
+  'travel': Icons.flight,
+  'work': Icons.work_outline,
+  'fitness': Icons.fitness_center,
+};
+const customCategoryColors = <Color>[
+  Color(0xFF3B82F6),
+  Color(0xFF15803D),
+  Color(0xFFA855F7),
+  Color(0xFFE11D48),
+  Color(0xFFB45309),
+  Color(0xFF0D9488),
+];

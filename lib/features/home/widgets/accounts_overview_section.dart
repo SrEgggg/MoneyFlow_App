@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
-import '../../../app/theme.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/money.dart';
 import '../../../core/widgets/section_card.dart';
@@ -39,22 +38,21 @@ class AccountsOverviewSection extends ConsumerWidget {
           totals[t] = (totals[t] ?? 0) + a.balance;
           byType[t]!.add(a);
         }
-        final types = totals.entries
-            .where((e) => e.value > 0)
-            .toList()
+        final types = totals.entries.where((e) => e.value > 0).toList()
           ..sort((a, b) => b.value.compareTo(a.value));
 
         // Pick up to three highest-balance accounts for the row preview.
-        final previewRows = (accounts.toList()
-              ..sort((a, b) => b.balance.compareTo(a.balance)))
-            .take(3)
-            .toList();
+        final previewRows =
+            (accounts.toList()..sort((a, b) => b.balance.compareTo(a.balance)))
+                .take(3)
+                .toList();
 
         return SectionCard(
           title: 'Accounts',
-          subtitle: 'Across ${types.length} ${types.length == 1 ? 'type' : 'types'}',
+          subtitle:
+              'Across ${types.length} ${types.length == 1 ? 'type' : 'types'}',
           titleIcon: Icons.account_balance_outlined,
-          titleIconColor: AppColors.primary,
+          titleIconColor: Theme.of(context).colorScheme.primary,
           trailing: _SeeAllPill(onTap: () => context.go(Routes.accounts)),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,8 +61,7 @@ class AccountsOverviewSection extends ConsumerWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final e in types)
-                    _TypeChip(type: e.key, total: e.value),
+                  for (final e in types) _TypeChip(type: e.key, total: e.value),
                 ],
               ),
               if (previewRows.isNotEmpty) ...[
@@ -75,7 +72,9 @@ class AccountsOverviewSection extends ConsumerWidget {
                     gradient: LinearGradient(
                       colors: [
                         Colors.transparent,
-                        AppColors.outline.withValues(alpha: 0.7),
+                        Theme.of(
+                          context,
+                        ).colorScheme.outline.withValues(alpha: 0.7),
                         Colors.transparent,
                       ],
                     ),
@@ -93,7 +92,9 @@ class AccountsOverviewSection extends ConsumerWidget {
                           gradient: LinearGradient(
                             colors: [
                               Colors.transparent,
-                              AppColors.outline.withValues(alpha: 0.5),
+                              Theme.of(
+                                context,
+                              ).colorScheme.outline.withValues(alpha: 0.5),
                               Colors.transparent,
                             ],
                           ),
@@ -127,23 +128,28 @@ class _EmptyAccounts extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 18),
             decoration: BoxDecoration(
-              color: AppColors.surfaceContainerHigh,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: AppColors.outline.withValues(alpha: 0.5),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outline.withValues(alpha: 0.5),
                 style: BorderStyle.solid,
               ),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.add_circle_outline_rounded,
-                    color: AppColors.primary, size: 18),
+              children: [
+                Icon(
+                  Icons.add_circle_outline_rounded,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 18,
+                ),
                 SizedBox(width: 10),
                 Text(
                   'Add your first account',
                   style: TextStyle(
-                    color: AppColors.primary,
+                    color: Theme.of(context).colorScheme.primary,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
@@ -169,10 +175,7 @@ class _TypeChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: type.color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: type.color.withValues(alpha: 0.32),
-          width: 1,
-        ),
+        border: Border.all(color: type.color.withValues(alpha: 0.32), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -180,7 +183,7 @@ class _TypeChip extends StatelessWidget {
           Icon(type.icon, color: type.color, size: 13),
           const SizedBox(width: 6),
           Text(
-            '${type.label} · ${Money.compact(total)}',
+            '${type.label} · ${Money.of(context).compact(total)}',
             style: TextStyle(
               color: type.color,
               fontSize: 11,
@@ -201,9 +204,7 @@ class _PremiumAccountRow extends StatelessWidget {
   Color _hexColor() {
     final raw = account.color.replaceAll('#', '');
     final v = int.tryParse('FF$raw', radix: 16);
-    return v == null
-        ? AccountType.fromId(account.type).color
-        : Color(v);
+    return v == null ? AccountType.fromId(account.type).color : Color(v);
   }
 
   @override
@@ -241,8 +242,8 @@ class _PremiumAccountRow extends StatelessWidget {
                       account.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.onSurface,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontSize: 14,
                         fontWeight: FontWeight.w700,
                         letterSpacing: -0.2,
@@ -251,8 +252,8 @@ class _PremiumAccountRow extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       'Updated ${D.shortDate(DateTime.now())}',
-                      style: const TextStyle(
-                        color: AppColors.onSurfaceVariant,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
                       ),
@@ -262,17 +263,20 @@ class _PremiumAccountRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                Money.format(account.balance),
-                style: const TextStyle(
-                  color: AppColors.onSurface,
+                Money.of(context).format(account.balance),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.3,
                 ),
               ),
               const SizedBox(width: 4),
-              const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.onSurfaceVariant, size: 18),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                size: 18,
+              ),
             ],
           ),
         ),
@@ -295,24 +299,29 @@ class _SeeAllPill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.14),
+            color: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.14),
             borderRadius: BorderRadius.circular(14),
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 'See all',
                 style: TextStyle(
-                  color: AppColors.primary,
+                  color: Theme.of(context).colorScheme.primary,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.2,
                 ),
               ),
               SizedBox(width: 2),
-              Icon(Icons.chevron_right_rounded,
-                  color: AppColors.primary, size: 14),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: Theme.of(context).colorScheme.primary,
+                size: 14,
+              ),
             ],
           ),
         ),

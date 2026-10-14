@@ -1,3 +1,4 @@
+import 'backup_validation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -11,18 +12,20 @@ import '../../core/utils/app_logger.dart';
 
 /// Backup / restore format version. Bump when the on-disk schema or this
 /// JSON envelope shape changes incompatibly.
-const int kBackupFormatVersion = 2;
+const int kBackupFormatVersion = 7;
 
 /// All user-data tables we know how to back up. Order matters for
 /// restore: parent tables before children, and cache/streaks last because
 /// they aggregate the rest.
 const List<String> kBackupTables = [
+  'custom_categories',
   'recurring_transactions',
   'budgets',
   'accounts',
   'goals',
   'goal_contributions',
   'transactions',
+  'transaction_revisions',
   'journal_entries',
   'daily_performance_cache',
   'streaks',
@@ -37,6 +40,32 @@ class BackupService {
   final AppLogger? logger;
   BackupService(this.db, {this.logger});
 
+  Future<BackupFileSummary> inspectJson(String raw) async {
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic> ||
+        decoded['format'] is! int ||
+        decoded['format'] < 1 ||
+        decoded['format'] > kBackupFormatVersion ||
+        decoded['tables'] is! Map<String, dynamic>) {
+      throw const FormatException('Choose a supported MoneyFlow backup.');
+    }
+    final tables = decoded['tables'] as Map<String, dynamic>;
+    await validateBackup(
+      await db.database,
+      tables,
+      decoded['format'] as int,
+      kBackupTables,
+    );
+    return BackupFileSummary(
+      format: decoded['format'] as int,
+      exportedAt: DateTime.tryParse(decoded['exported_at']?.toString() ?? ''),
+      tableCounts: {
+        for (final entry in tables.entries)
+          if (entry.value is List) entry.key: (entry.value as List).length,
+      },
+    );
+  }
+
   /// Encode every user-data table to a JSON string. Includes a `format`
   /// version + `exported_at` so future readers can detect mismatches.
   Future<String> exportJsonString() async {
@@ -48,15 +77,11 @@ class BackupService {
       'tables': <String, Object?>{},
     };
     final tables = envelope['tables'] as Map<String, Object?>;
-    for (final name in kBackupTables) {
-      final rows = await database.query(name);
-      tables[name] = rows.map(_rowToJsonable).toList();
-    }
-    // Settings is a single-row special case.
-    final settingsRows = await database.query('settings', where: 'id = 1');
-    if (settingsRows.isNotEmpty) {
-      tables['settings'] = [_rowToJsonable(settingsRows.first)];
-    }
+    await database.transaction((txn) async {
+      for (final name in [...kBackupTables, 'settings']) {
+        tables[name] = (await txn.query(name)).map(_rowToJsonable).toList();
+      }
+    });
     return const JsonEncoder.withIndent('  ').convert(envelope);
   }
 
@@ -101,7 +126,11 @@ class BackupService {
       logger?.error(err);
       throw const FormatException('Backup file is not a JSON object');
     }
-    final format = (decoded['format'] as num?)?.toInt() ?? 0;
+    final version = decoded['format'];
+    if (version is! int || version < 1) {
+      throw const FormatException('Invalid backup version.');
+    }
+    final format = version;
     if (format > kBackupFormatVersion) {
       throw FormatException(
         'Backup format $format is newer than this app supports '
@@ -113,23 +142,9 @@ class BackupService {
       throw const FormatException('Missing or invalid "tables" envelope');
     }
 
-    // Validate the envelope before a replace operation can remove saved data.
-    for (final name in [
-      'accounts',
-      'goals',
-      'goal_contributions',
-      'transactions',
-      'settings',
-    ]) {
-      final rows = tables[name];
-      if (rows is! List || rows.any((row) => row is! Map)) {
-        throw FormatException('Missing or invalid backup table: $name');
-      }
-    }
-    if ((tables['settings'] as List).length != 1) {
-      throw const FormatException('Backup must include one settings record.');
-    }
     final database = await db.database;
+    await validateBackup(database, tables, format, kBackupTables);
+
     final counts = <String, int>{};
 
     logger?.info('Starting database transaction for restore...');
@@ -154,7 +169,7 @@ class BackupService {
           await txn.insert(
             name,
             row,
-            conflictAlgorithm: ConflictAlgorithm.replace,
+            conflictAlgorithm: ConflictAlgorithm.abort,
           );
         }
         counts[name] = rows.length;
@@ -168,7 +183,7 @@ class BackupService {
           await txn.insert(
             'settings',
             row,
-            conflictAlgorithm: ConflictAlgorithm.replace,
+            conflictAlgorithm: ConflictAlgorithm.abort,
           );
           counts['settings'] = 1;
         }
@@ -220,7 +235,7 @@ class RestoreReport {
 }
 
 /// Lightweight description of the backup contents, for the Settings UI.
-/// Avoids loading the whole file into memory just to display a header.
+/// Parses the complete envelope, including backups containing goal photos.
 class BackupFileSummary {
   final int format;
   final DateTime? exportedAt;
@@ -233,12 +248,7 @@ class BackupFileSummary {
   });
 
   static Future<BackupFileSummary> peek(File file) async {
-    final head = await file
-        .openRead(0, 64 * 1024)
-        .fold<String>(
-          '',
-          (acc, chunk) => acc + utf8.decode(chunk, allowMalformed: true),
-        );
+    final head = await file.readAsString();
     final braceIdx = head.indexOf('{');
     if (braceIdx < 0) {
       throw const FormatException('Not a JSON file');

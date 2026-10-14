@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/router.dart';
-import '../../../app/theme.dart';
 import '../../../core/widgets/section_card.dart';
 import '../../../data/models/enums.dart';
 import '../../../data/models/models.dart';
@@ -27,7 +26,9 @@ class StreaksSummaryRow extends ConsumerWidget {
           subtitle: 'Keep the chain going',
           titleIcon: Icons.local_fire_department_rounded,
           titleIconColor: const Color(0xFFF97316),
-          trailing: _SeeAllPill(onTap: () => context.go(Routes.performanceStreaks)),
+          trailing: _SeeAllPill(
+            onTap: () => context.go(Routes.performanceStreaks),
+          ),
           onTap: () => context.go(Routes.performanceStreaks),
           child: Row(
             children: [
@@ -75,16 +76,13 @@ class _StreakPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _colorFor(kind);
+    final color = _colorFor(context, kind);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: color.withValues(alpha: 0.25),
-          width: 1,
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
       ),
       child: Column(
         children: [
@@ -105,7 +103,7 @@ class _StreakPill extends StatelessWidget {
                 TextSpan(
                   text: '$current',
                   style: TextStyle(
-                    color: AppColors.onSurface,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     letterSpacing: -0.4,
@@ -114,7 +112,7 @@ class _StreakPill extends StatelessWidget {
                 TextSpan(
                   text: ' days',
                   style: TextStyle(
-                    color: AppColors.onSurfaceVariant,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -138,10 +136,10 @@ class _StreakPill extends StatelessWidget {
     );
   }
 
-  Color _colorFor(StreakKind k) {
+  Color _colorFor(BuildContext context, StreakKind k) {
     switch (k) {
       case StreakKind.saving:
-        return AppColors.primary;
+        return Theme.of(context).colorScheme.primary;
       case StreakKind.logging:
         return const Color(0xFF3B82F6);
       case StreakKind.goal:
@@ -170,24 +168,27 @@ class _SeeAllPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.14),
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             'See all',
             style: TextStyle(
-              color: AppColors.primary,
+              color: Theme.of(context).colorScheme.primary,
               fontSize: 11,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.2,
             ),
           ),
           SizedBox(width: 2),
-          Icon(Icons.chevron_right_rounded,
-              color: AppColors.primary, size: 14),
+          Icon(
+            Icons.chevron_right_rounded,
+            color: Theme.of(context).colorScheme.primary,
+            size: 14,
+          ),
         ],
       ),
     );

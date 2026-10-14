@@ -40,7 +40,8 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
       _monthKey = e!.monthKey;
     } else {
       final now = DateTime.now();
-      _monthKey = '${now.year.toString().padLeft(4, '0')}'
+      _monthKey =
+          '${now.year.toString().padLeft(4, '0')}'
           '-${now.month.toString().padLeft(2, '0')}';
     }
   }
@@ -72,20 +73,24 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
       final now = DateTime.now();
       final notifier = ref.read(budgetsProvider.notifier);
       if (widget.existing == null) {
-        await notifier.add(BudgetRecord(
-          category: _categoryId,
-          amount: amount,
-          monthKey: _pinnedToMonth ? _monthKey : null,
-          createdAt: now,
-          updatedAt: now,
-        ));
+        await notifier.add(
+          BudgetRecord(
+            category: _categoryId,
+            amount: amount,
+            monthKey: _pinnedToMonth ? _monthKey : null,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
       } else {
-        await notifier.edit(widget.existing!.copyWith(
-          category: _categoryId,
-          amount: amount,
-          monthKey: _pinnedToMonth ? _monthKey : null,
-          updatedAt: now,
-        ));
+        await notifier.edit(
+          widget.existing!.copyWith(
+            category: _categoryId,
+            amount: amount,
+            monthKey: _pinnedToMonth ? _monthKey : null,
+            updatedAt: now,
+          ),
+        );
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -102,18 +107,23 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: AppColors.surfaceContainer,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainer,
         title: const Text('Delete budget?'),
         content: const Text(
-            'This removes the cap for the category. Your transactions stay.'),
+          'This removes the cap for the category. Your transactions stay.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete',
-                  style: TextStyle(color: AppColors.error))),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              'Delete',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
         ],
       ),
     );
@@ -141,7 +151,8 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
     );
     if (picked == null) return;
     setState(() {
-      _monthKey = '${picked.year.toString().padLeft(4, '0')}'
+      _monthKey =
+          '${picked.year.toString().padLeft(4, '0')}'
           '-${picked.month.toString().padLeft(2, '0')}';
     });
   }
@@ -168,8 +179,18 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
 
   String _monthName(int m) {
     const names = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     return names[(m - 1).clamp(0, 11)];
   }
@@ -189,7 +210,7 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
               width: 36,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.outline,
+                color: Theme.of(context).colorScheme.outline,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -197,8 +218,8 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
           const SizedBox(height: 14),
           Text(
             editing ? 'Edit budget' : 'New budget',
-            style: const TextStyle(
-              color: AppColors.onSurface,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 18,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.2,
@@ -210,23 +231,37 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
             height: 40,
             child: DropdownButtonFormField<String>(
               initialValue: _categoryId,
-              dropdownColor: AppColors.surfaceContainerHigh,
+              dropdownColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest,
               decoration: InputDecoration(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 filled: true,
-                fillColor: AppColors.surfaceContainerHigh,
+                fillColor: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest,
               ),
               items: [
-                for (final c in Categories.expense)
+                for (final c in Categories.available(
+                  context,
+                  'expense',
+                  selected: _categoryId,
+                ))
                   DropdownMenuItem(
                     value: c.id,
                     child: Row(
                       children: [
                         Icon(c.icon, size: 16, color: c.color),
                         const SizedBox(width: 8),
-                        Text(c.name,
-                            style: const TextStyle(color: AppColors.onSurface)),
+                        Text(
+                          c.name,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -240,18 +275,19 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
           const _FieldLabel('Monthly cap'),
           TextField(
             controller: _amountCtrl,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
             ],
-            style: const TextStyle(
-                color: AppColors.onSurface, fontSize: 18),
-            decoration: const InputDecoration(
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface,
+              fontSize: 18,
+            ),
+            decoration: InputDecoration(
               hintText: '0',
-              prefixText: '₱ ',
+              prefixText: '${Money.of(context).symbol} ',
               prefixStyle: TextStyle(
-                color: AppColors.onSurfaceVariant,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
               ),
@@ -263,7 +299,7 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: AppColors.surfaceContainerHigh,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -273,8 +309,7 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
                   subtitle: 'Applies regardless of the calendar month.',
                   value: false,
                   selected: _pinnedToMonth,
-                  onSelect: () =>
-                      setState(() => _pinnedToMonth = false),
+                  onSelect: () => setState(() => _pinnedToMonth = false),
                 ),
                 _ScopeRow(
                   label: 'Specific month',
@@ -288,8 +323,11 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
                     padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
                     child: Row(
                       children: [
-                        const Icon(Icons.calendar_today_rounded,
-                            size: 14, color: AppColors.onSurfaceVariant),
+                        Icon(
+                          Icons.calendar_today_rounded,
+                          size: 14,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                         const SizedBox(width: 6),
                         TextButton(
                           onPressed: _pickMonth,
@@ -297,8 +335,8 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
                             _monthKey == null
                                 ? 'Choose month'
                                 : _formatMonthKey(_monthKey!),
-                            style: const TextStyle(
-                              color: AppColors.primary,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.primary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -311,9 +349,13 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
-            Text(_error!,
-                style: const TextStyle(
-                    color: AppColors.error, fontSize: 12)),
+            Text(
+              _error!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
           ],
           const SizedBox(height: 18),
           Row(
@@ -321,8 +363,10 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
               if (editing)
                 IconButton(
                   onPressed: _saving ? null : _delete,
-                  icon: const Icon(Icons.delete_outline,
-                      color: AppColors.error),
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                   tooltip: 'Delete',
                 ),
               const Spacer(),
@@ -333,15 +377,15 @@ class _BudgetFormState extends ConsumerState<BudgetForm> {
               const SizedBox(width: 8),
               FilledButton(
                 onPressed: _canSave ? _save : null,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(120, 46),
-                ),
+                style: FilledButton.styleFrom(minimumSize: const Size(120, 46)),
                 child: _saving
                     ? const SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2.4, color: AppColors.onPrimary),
+                          strokeWidth: 2.4,
+                          color: AppColors.onPrimary,
+                        ),
                       )
                     : Text(editing ? 'Save' : 'Add'),
               ),
@@ -362,8 +406,8 @@ class _FieldLabel extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 6, left: 2),
       child: Text(
         text,
-        style: const TextStyle(
-          color: AppColors.onSurfaceVariant,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           fontSize: 11,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.4,
@@ -403,12 +447,12 @@ class _ScopeRow extends StatelessWidget {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: selected
-                    ? AppColors.primary
+                    ? Theme.of(context).colorScheme.primary
                     : Colors.transparent,
                 border: Border.all(
                   color: selected
-                      ? AppColors.primary
-                      : AppColors.outline,
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.outline,
                   width: 1.5,
                 ),
               ),
@@ -430,16 +474,22 @@ class _ScopeRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(label,
-                      style: const TextStyle(
-                        color: AppColors.onSurface,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      )),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: const TextStyle(
-                          color: AppColors.onSurfaceVariant, fontSize: 11)),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
                 ],
               ),
             ),

@@ -1,3 +1,5 @@
+import '../features/performance/journal_tab.dart';
+import '../features/performance/reviews_tab.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -34,6 +36,8 @@ class Routes {
   static const accounts = '/accounts';
   static const budgets = '/settings/budgets';
   static const recurring = '/settings/recurring';
+  static const performanceJournal = '/performance/journal';
+  static const performanceReviews = '/performance/reviews';
   static const performanceAchievements = '/performance/achievements';
   static const performanceStreaks = '/performance/streaks';
   static const performanceAdvanced = '/performance/advanced';
@@ -71,7 +75,9 @@ GoRouter buildRouter() {
             routes: [
               GoRoute(
                 path: Routes.transactions,
-                builder: (c, s) => const TransactionsScreen(),
+                builder: (c, s) => TransactionsScreen(
+                  showHistory: s.uri.queryParameters['tab'] == 'history',
+                ),
                 routes: [
                   GoRoute(
                     path: ':id',
@@ -113,6 +119,20 @@ GoRouter buildRouter() {
                 path: Routes.performance,
                 builder: (c, s) => const PerformanceScreen(),
                 routes: [
+                  GoRoute(
+                    path: 'journal',
+                    builder: (c, s) => Scaffold(
+                      appBar: AppBar(title: const Text('Journal')),
+                      body: const JournalTab(),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'reviews',
+                    builder: (c, s) => Scaffold(
+                      appBar: AppBar(title: const Text('Monthly reviews')),
+                      body: const ReviewsTab(),
+                    ),
+                  ),
                   GoRoute(
                     path: 'achievements',
                     builder: (c, s) => const AchievementsScreen(),

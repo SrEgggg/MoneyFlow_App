@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/theme.dart';
-import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/money.dart';
 import '../../../data/models/enums.dart';
 import '../../../data/models/models.dart';
@@ -12,11 +10,7 @@ class AccountTile extends StatelessWidget {
   final AccountRecord account;
   final VoidCallback? onTap;
 
-  const AccountTile({
-    super.key,
-    required this.account,
-    this.onTap,
-  });
+  const AccountTile({super.key, required this.account, this.onTap});
 
   Color _hexColor() {
     final raw = account.color.replaceAll('#', '');
@@ -51,31 +45,35 @@ class AccountTile extends StatelessWidget {
                 children: [
                   Text(
                     account.name,
-                    style: const TextStyle(
-                      color: AppColors.onSurface,
-                      fontSize: 14,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface,
+                      fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    'Updated ${D.shortDate(DateTime.now())}',
-                    style: const TextStyle(
-                      color: AppColors.onSurfaceMuted,
-                      fontSize: 11,
+                  if (account.name.toLowerCase() != type.label.toLowerCase())
+                    Text(
+                      type.label,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              Money.format(account.balance),
-              style: const TextStyle(
-                color: AppColors.onSurface,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+            Expanded(
+              child: Text(
+                Money.of(context).format(account.balance),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
